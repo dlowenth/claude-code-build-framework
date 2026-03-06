@@ -216,7 +216,7 @@ This section must be completed before planning begins. Values here override `cla
 - Local development: localhost *(default)*
 - Production: Railway *(default)*
 - Edge Functions: Supabase *(default)*
-- Cross-platform build: `.npmrc` with `force=true` required in project root when developing on Windows and deploying to Railway/Linux (per `claude.md` Section 8.3.1)
+- Cross-platform build: `.npmrc` with `force=true` required in project root when developing on Windows and deploying to Railway/Linux (per `claude.md` Section 8.3.2)
 - Database backup tier: Free / Pro / Pro + PITR *(per `claude.md` Section 8.5 — PITR recommended for production user-facing apps)*
 
 ### Observability *(per `claude.md` Section 13.3)*
@@ -348,21 +348,23 @@ Per `claude.md` Section 6: all calculations must be defined once and reused ever
 
 ## 14) Environment Variables (Required)
 
-List all environment variables the application requires. No hardcoded secrets in source code.
+List all environment variables the application requires. No hardcoded secrets in source code. This section is the source of truth for generating the project's `.env.example` file during scaffolding (per `claude.md` Section 8.3.1).
 
-| Variable | Purpose | Source |
-|---|---|---|
-| `SUPABASE_URL` | Supabase project URL | Supabase dashboard |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key | Supabase dashboard |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) | Supabase dashboard |
-| `DISCORD_CLIENT_ID` | Discord OAuth client ID (if using Discord auth) | Discord developer portal |
-| `DISCORD_CLIENT_SECRET` | Discord OAuth client secret (if using Discord auth) | Discord developer portal |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (if using Clerk auth) | Clerk dashboard |
-| `CLERK_SECRET_KEY` | Clerk secret key, server-side only (if using Clerk auth) | Clerk dashboard |
-| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project API key (if using PostHog) | PostHog dashboard |
-| `NEXT_PUBLIC_POSTHOG_HOST` | PostHog instance URL (if using PostHog) | PostHog dashboard |
-| `ANTHROPIC_API_KEY` | Anthropic API key (if app makes runtime LLM calls) | Anthropic console |
-| `<<VARIABLE>>` | `<<PURPOSE>>` | `<<SOURCE>>` |
+| Variable | Purpose | Source | Scope |
+|---|---|---|---|
+| `SUPABASE_URL` | Supabase project URL | Supabase dashboard | Client-safe |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key | Supabase dashboard | Client-safe |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) | Supabase dashboard | Server-only |
+| `DISCORD_CLIENT_ID` | Discord OAuth client ID (if using Discord auth) | Discord developer portal | Server-only |
+| `DISCORD_CLIENT_SECRET` | Discord OAuth client secret (if using Discord auth) | Discord developer portal | Server-only |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (if using Clerk auth) | Clerk dashboard | Client-safe |
+| `CLERK_SECRET_KEY` | Clerk secret key, server-side only (if using Clerk auth) | Clerk dashboard | Server-only |
+| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project API key (if using PostHog) | PostHog dashboard | Client-safe |
+| `NEXT_PUBLIC_POSTHOG_HOST` | PostHog instance URL (if using PostHog) | PostHog dashboard | Client-safe |
+| `ANTHROPIC_API_KEY` | Anthropic API key (if app makes runtime LLM calls) | Anthropic console | Server-only |
+| `<<VARIABLE>>` | `<<PURPOSE>>` | `<<SOURCE>>` | Client-safe / Server-only |
+
+**Scope guidance:** Variables prefixed with `NEXT_PUBLIC_` or `VITE_` are bundled into the frontend build and visible to users. All other variables are server-side only and must never be exposed to the client. Mark each variable's scope in this table so the `.env.example` file can include the correct warnings.
 
 ---
 

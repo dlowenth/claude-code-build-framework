@@ -164,6 +164,7 @@ Generate a ready-to-paste prompt for Claude Code that:
 - After the build pass, instructs Claude Code to pause and present the freeze audit checklist results for review
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
 - Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows → Railway/Linux cross-platform deploy)
+- Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding, with grouped sections, placeholder values, descriptions, source instructions, and client-safe vs. server-only warnings (per `claude.md` Section 8.3.1)
 
 **If Full Build:**
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved

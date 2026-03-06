@@ -484,7 +484,65 @@ Version control via Git + GitHub is the primary safety mechanism.
 - Supabase connection strings, anon keys, and service role keys must be environment variables.
 - PRD must list all required environment variables and their purpose.
 
-### 8.3.1 Cross-Platform Build Fix (Windows → Railway/Linux)
+### 8.3.1 `.env.example` File (Required)
+Every project must include a `.env.example` file in the project root that documents every environment variable the application needs. This file is committed to Git (it contains no secrets) and serves as the setup guide for anyone configuring the application for the first time.
+
+**Rule: `.env.example` must be created during project scaffolding, before any code that depends on environment variables is written.** It must be kept in sync as new integrations are added throughout the build.
+
+The file must include:
+- Every required environment variable with a placeholder value
+- A comment explaining what each variable is, where to get it, and whether it's required or optional
+- Grouping by service/purpose for readability
+- Notes on which variables are client-side safe (public) vs. server-side only (secret)
+
+**Template structure:**
+```env
+# ============================================
+# Application Configuration
+# ============================================
+# Copy this file to .env and fill in your values.
+# NEVER commit the .env file — it contains secrets.
+# ============================================
+
+# --- Supabase ---
+SUPABASE_URL=https://your-project.supabase.co          # Supabase project URL (Supabase dashboard → Settings → API)
+SUPABASE_ANON_KEY=your-anon-key-here                    # Supabase anonymous/public key (safe for client-side)
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here     # Supabase service role key (SERVER-SIDE ONLY — never expose to client)
+
+# --- Auth: Discord OAuth (if using Discord) ---
+DISCORD_CLIENT_ID=your-discord-client-id                # Discord developer portal → Application → OAuth2
+DISCORD_CLIENT_SECRET=your-discord-client-secret         # Discord developer portal → Application → OAuth2 (SERVER-SIDE ONLY)
+
+# --- Auth: Clerk (if using Clerk instead of Discord) ---
+# NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_xxx          # Clerk dashboard → API Keys (safe for client-side)
+# CLERK_SECRET_KEY=sk_live_xxx                           # Clerk dashboard → API Keys (SERVER-SIDE ONLY)
+
+# --- Railway ---
+# Railway environment variables are configured via the Railway dashboard,
+# not in this file. This section documents what must be set there.
+# Set all variables from this file in Railway dashboard → Variables.
+
+# --- Anthropic (if app makes runtime LLM calls) ---
+# ANTHROPIC_API_KEY=sk-ant-xxx                           # Anthropic console → API Keys (SERVER-SIDE ONLY)
+
+# --- Observability (if using PostHog) ---
+# NEXT_PUBLIC_POSTHOG_KEY=phc_xxx                        # PostHog dashboard → Project Settings (safe for client-side)
+# NEXT_PUBLIC_POSTHOG_HOST=https://app.posthog.com       # PostHog instance URL
+
+# --- Additional Integrations ---
+# Add project-specific variables below with the same format:
+# VARIABLE_NAME=placeholder-value  # Description (source) (CLIENT-SAFE or SERVER-SIDE ONLY)
+```
+
+**Rules:**
+- Variables prefixed with `NEXT_PUBLIC_` or `VITE_` are client-side safe and will be bundled into the frontend build. All other variables must be treated as server-side only.
+- Comment out optional sections (Clerk, Anthropic, PostHog) with `#` and include them as templates so they're ready to uncomment when needed.
+- When a new integration is added during the build, the `.env.example` must be updated in the same commit.
+- The `.env.example` header must include the instruction to copy to `.env` and a warning to never commit `.env`.
+
+`.env.example` is committed to Git. `.env` is gitignored. This distinction is critical — `.env.example` is documentation, `.env` contains secrets.
+
+### 8.3.2 Cross-Platform Build Fix (Windows → Railway/Linux)
 When developing on Windows and deploying to Railway (Linux), `package-lock.json` locks in Windows-specific optional dependencies (e.g., `@rollup/rollup-win32-x64-msvc`). Railway runs `npm ci`, which strictly enforces the lock file and fails with `EBADPLATFORM` when it encounters packages targeting a different OS.
 
 **Rule: Create `.npmrc` with `force=true` in the project root at project creation time, before the first `npm install`.**
@@ -1593,6 +1651,8 @@ Before production readiness, Claude must confirm:
 - [ ] Error tracking configured for production (per Section 13.3 — if applicable)
 - [ ] Feature adoption tracking events implemented for key features (per Section 13.3 — if applicable)
 - [ ] Environment variables documented and no hardcoded secrets
+- [ ] `.env.example` exists, is committed, and documents all required variables with grouping, descriptions, and source instructions (per Section 8.3.1)
+- [ ] `.env.example` is in sync with actual environment variable usage — no missing or stale entries
 - [ ] Migration files match current schema state
 - [ ] No schema drift — no direct dashboard modifications to production RLS, functions, or triggers (per Section 8.7)
 - [ ] Database backup tier declared in PRD — PITR flagged as recommended for production user-facing apps (per Section 8.5)
@@ -1691,7 +1751,7 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-06 |
-| Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Parallel Execution expanded to cover Agent Teams + Subagents + Custom Subagents, Claude Code Hooks as automated rule enforcement with template scripts, expanded Freeze Audit Checklist |
+| Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Parallel Execution expanded to cover Agent Teams (corrected architecture with mailbox and shared task list) + Subagents + Custom Subagents, Claude Code Hooks as automated rule enforcement with template scripts, `.env.example` as mandatory scaffolding artifact, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |
 
 This document governs all Claude-built applications unless superseded by a higher-version Claude.md.
