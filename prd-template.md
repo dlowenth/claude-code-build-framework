@@ -225,10 +225,21 @@ This section must be completed before planning begins. Values here override `cla
 - Session replay: Yes / No
 - Event naming convention: `<<CONVENTION>>` *(e.g., `feature_name.action` → `site_health.scan_started`)*
 
-### Agent Teams *(Full Build Only)*
-- Use Agent Teams for parallel execution: Yes / No / TBD during planning
+### Parallel Execution *(per `claude.md` Section 20.3)*
+- Use Agent Teams for phase-level parallelism: Yes / No / TBD during planning *(Full Build only)*
 - If Yes, which phases are candidates for parallel work? `<<LIST>>`
 - Estimated team size per phase: `<<2–4 TEAMMATES>>`
+- Use subagents for task-level parallelism: Yes / Recommended / TBD during planning *(any build mode)*
+- Custom subagents in `.claude/agents/`: Yes (recommended for Full Build) / No
+- If Yes, which agents? Security Reviewer / Component Checker / Test Coverage / Other: `<<LIST>>`
+
+### Hooks (Automated Rule Enforcement) *(per `claude.md` Section 20.5)*
+- Use hook enforcement scripts: Yes (recommended) / No
+- `pre_tool_use.py` guardrails: Yes (recommended for all projects) / No
+- `post_tool_use.py` quality checks: Yes / No
+- `stop.py` session reminders: Yes / No
+- Custom hooks: `<<LIST OR NONE>>`
+- Hooks make external network calls: No (default) / Yes — requires approval and data exposure review
 
 ### Public-Facing Content
 - Does this application have public-facing content routes? Yes / No
@@ -375,6 +386,9 @@ List all environment variables the application requires. No hardcoded secrets in
 - Never delete production data during development or testing (per `claude.md` Section 12.3)
 - Edge Functions must only be deployed from committed, tagged code on main branch (per `claude.md` Section 8.6)
 - Role-based test cases must be maintained in `tests/role-tests.md` (per `claude.md` Section 14.4)
+- Custom subagents recommended for Full Build — create security-reviewer.md, component-checker.md, test-coverage.md in `.claude/agents/` (per `claude.md` Section 20.3.3)
+- Plan must identify both phase-level (Agent Teams) and task-level (subagents) parallelism opportunities (per `claude.md` Section 20.3.4)
+- Hook enforcement scripts should be created during project scaffolding — at minimum `pre_tool_use.py` guardrails (per `claude.md` Section 20.5)
 - Additional build notes: `<<NOTES>>`
 
 ### Edge Function Deployment Manifest *(If Using Supabase Edge Functions)*

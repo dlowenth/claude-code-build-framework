@@ -888,6 +888,13 @@ Pages must be layout and orchestration only — they compose components, manage 
 
 **Folder structure:**
 ```
+.claude/
+  agents/             # Custom subagents (security-reviewer.md, etc.) — see Section 20.3.3
+  hooks/              # Hook enforcement scripts — see Section 20.5
+    pre_tool_use.py
+    post_tool_use.py
+    stop.py
+  settings.json       # Hook configuration + permissions + env
 src/
   pages/              # Page-level components (routing, layout, data orchestration)
     Dashboard.jsx     # Composes DashboardStats, RecentActivity, QuickActions
@@ -1131,32 +1138,218 @@ When a build step fails, Claude Code must follow this sequence:
 
 The `lessons-learned.md` file is the only project file Claude Code may append to without explicit approval. All other documentation changes require owner approval (see Section 22).
 
-### 20.3 Agent Teams (Full Build Only)
-Claude Code Agent Teams allow multiple Claude Code instances to work in parallel, coordinated by a lead session. Agent Teams are an experimental feature and must be explicitly enabled.
+### 20.3 Parallel Execution (Agent Teams and Subagents)
+Claude Code supports two mechanisms for parallel work. They operate differently and serve different purposes — choose based on whether workers need to communicate with each other.
 
-**When to use Agent Teams:**
-- Full Build mode only (not Express Build)
-- Phases with 3+ independent workstreams that touch different files
-- Parallel module development (e.g., frontend + backend + tests)
-- Multi-perspective code review or debugging
+| Feature | Agent Teams | Subagents (Task Tool) |
+|---|---|---|
+| Context | Own window; fully independent | Own window; results return to caller |
+| Communication | Teammates message each other directly via mailbox | Report back to parent only — no sibling communication |
+| Coordination | Shared task list with dependency tracking and self-claiming | Parent manages everything |
+| Best for | Complex work requiring discussion and collaboration | Focused tasks where only the result matters |
+| Token cost | ~5x per teammate (each is a separate Claude instance) | Lower — results summarized back |
+| Persistence | Ephemeral — exist for one session, then gone | Ephemeral — exist for one task |
 
-**When NOT to use Agent Teams:**
-- Express Build (single-pass execution, coordination overhead not justified)
-- Sequential tasks with dependencies between steps
+#### 20.3.1 Agent Teams (Full Build Only)
+Agent Teams spawn multiple full Claude Code instances that work together as a coordinated team. One session acts as the lead, coordinating work and synthesizing results. Teammates work independently in their own context windows but can **communicate directly with each other and with the lead** via a mailbox system. The team shares a task list with dependency tracking — tasks can block other tasks, and when a blocking task completes, downstream tasks automatically unblock. Teammates self-claim the next available unblocked task when they finish, with file-lock based claiming to prevent race conditions.
+
+This is fundamentally different from subagents. Subagents report results back in isolation. Agent Teams discuss, challenge each other's findings, and coordinate autonomously.
+
+**Best use cases:**
+- **Research and review:** Multiple teammates investigate different aspects of a problem simultaneously, then share and challenge each other's findings
+- **New modules or features:** Teammates each own a separate piece without stepping on each other
+- **Debugging with competing hypotheses:** Teammates test different theories in parallel, share evidence, and converge on the correct answer faster than a single session
+- **Cross-layer coordination:** Changes that span frontend, backend, and tests, each owned by a different teammate
+
+**When NOT to use:**
+- Express Build (coordination overhead and ~5x token cost not justified for single-pass execution)
 - Work where multiple teammates would edit the same files
 - Simple phases with a single workstream
+- Tasks where only the result matters and no inter-agent discussion is needed (use subagents instead)
 
-**Constraints:**
-- Each teammate loads `claude.md`, PRD, and project context automatically but does NOT inherit the lead's conversation history
+**Architecture:**
+- Each teammate is a separate Claude Code instance with its own context window
+- Teammates load `CLAUDE.md`, PRD, and project context automatically but do NOT inherit the lead's conversation history
 - Spawn prompts must include task-specific details — do not rely on prior conversation context
 - Structure tasks so each teammate owns distinct files — no overlapping file edits
-- The lead coordinates and synthesizes; it should not implement alongside teammates
-- Keep teams small (2–4 teammates) to manage token cost and coordination overhead
-- Agent teams consume significantly more tokens — approximately proportional to the number of active teammates
-- One team per session; no nested teams; `/resume` does not restore teammates
+- You can interact with individual teammates directly without going through the lead — useful for course-correcting a teammate that's going off track
+- Agent Teams are ephemeral by design — they exist for the duration of a session and then they're gone. No persistent identity, no memory across sessions, no `/resume`
+- Keep teams small (2–4 teammates) to manage token cost (~5x per teammate)
+- One team per session; no nested teams
 
-**Planning requirement:**
-During the plan phase, Claude Code should identify which phases (if any) would benefit from Agent Teams and propose a team structure. The project owner must approve the team structure before execution.
+**Spawn backends:**
+- **In-process** (default): All teammates share one terminal view. Use `Shift+Up`/`Shift+Down` to cycle between them. Fastest, but no simultaneous visibility.
+- **tmux**: Each teammate gets its own terminal pane. Requires tmux installed. Best for monitoring multiple teammates simultaneously.
+- **Auto-detect**: Uses tmux if available, otherwise falls back to in-process.
+
+Force a specific backend via environment variable: `CLAUDE_CODE_SPAWN_BACKEND=tmux` (or `in-process`).
+
+Note: Split pane mode does not work in VS Code's integrated terminal or Windows Terminal. On Windows via the Desktop app, in-process mode is the likely default.
+
+**Setup:** Requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` in `~/.claude/settings.json`.
+
+**Team-specific hooks (see Section 20.5):**
+Agent Teams support two additional hook events beyond the standard 12:
+- `TeammateIdle` — fires when a teammate is about to go idle. Exit with code 2 to send feedback and keep the teammate working.
+- `TaskCompleted` — fires when a task is being marked complete. Exit with code 2 to prevent completion and send feedback. Use this as a quality gate to validate work before a task is accepted.
+
+#### 20.3.2 Subagents via Task Tool
+Subagents are lightweight Claude Code instances spawned via the built-in Task tool. Each gets its own isolated context window, operates independently, and returns distilled results to the parent. Unlike Agent Teams, subagents **cannot communicate with each other or with the parent during execution** — they are black boxes until complete.
+
+Best for **task-level parallelism within a phase** — focused tasks where only the result matters and no inter-agent discussion is needed.
+
+**When to use:**
+- Any build mode (Express or Full Build)
+- Breaking a phase into parallel tasks (e.g., one subagent for components, one for tests, one for API integration)
+- Research-intensive work that would overflow a single context window
+- Codebase exploration across multiple directories simultaneously
+- Multi-version prototyping (build two approaches in parallel, compare results)
+
+**When NOT to use:**
+- Tasks that require back-and-forth coordination during execution (subagents can't communicate with parent or siblings until complete)
+- Work that depends on another subagent's output (sequential dependencies)
+- Very small tasks where the overhead of spawning exceeds the benefit
+
+**Key characteristics:**
+- Each subagent gets its own isolated context window — it doesn't pollute the parent's context
+- The parent has no visibility into subagent activity until completion (black box execution)
+- Results flow back as distilled summaries, not full transcripts
+- Subagents can be triggered automatically or explicitly via prompts
+- No experimental flag required — this is a built-in Claude Code capability
+
+**Prompting pattern for explicit task-level parallelism:**
+```
+"Implement the user management feature using parallel tasks:
+
+Task 1 (Components): Create UserTable, UserFilters, and InviteModal
+  in src/components/admin/
+
+Task 2 (API): Create the admin-users Edge Function with GET, POST,
+  and PATCH endpoints
+
+Task 3 (Tests): Write role-based test cases for admin and member
+  roles in tests/role-tests.md
+
+Run all tasks in parallel."
+```
+
+#### 20.3.3 Custom Subagents (Project Infrastructure)
+For larger applications, define reusable custom subagents as markdown files in `.claude/agents/` in the project root. These auto-trigger based on the work being done, enforcing framework rules without manual invocation.
+
+**Project folder structure:**
+```
+.claude/
+└── agents/
+    ├── security-reviewer.md
+    ├── component-checker.md
+    └── test-coverage.md
+```
+
+**Recommended custom subagents for this framework:**
+
+**`security-reviewer.md`** — Automatically engages when auth code, RLS policies, Edge Functions, or permission logic is modified. Checks against the rules in Sections 4, 5, and 12. Returns a structured report with severity ratings.
+
+```markdown
+# Security Reviewer Agent
+
+## Description
+Reviews code changes for security compliance with the project's
+claude.md build contract.
+
+## When to Use
+Automatically engage when:
+- RLS policies are created or modified
+- Edge Function auth logic is changed
+- Permission checks are added or modified
+- New database tables are created (verify GRANTs and RLS)
+- User-facing error handling is modified
+
+## Instructions
+When reviewing code:
+1. Verify RLS policies use auth.jwt(), not subqueries on auth.users
+2. Verify table-level GRANTs exist for anon and authenticated roles
+3. Verify Edge Functions handle auth internally if using --no-verify-jwt
+4. Verify no sensitive data is exposed in production error responses
+5. Verify debug mode doesn't leak data when toggled off
+6. Check for hardcoded secrets or credentials
+
+Return a structured report with:
+- Severity (Critical / High / Medium / Low)
+- File and line reference
+- Rule violated (claude.md section number)
+- Recommended fix
+```
+
+**`component-checker.md`** — Automatically engages when page files are modified. Verifies decomposition rules from Section 17.2.
+
+```markdown
+# Component Architecture Checker
+
+## Description
+Verifies that page files remain lean and features are properly
+decomposed into components per claude.md Section 17.2.
+
+## When to Use
+Automatically engage when:
+- Any file in src/pages/ is modified
+- A new page file is created
+- A feature is added to an existing page
+
+## Instructions
+1. Check if any page file exceeds ~200 lines
+2. Verify the page only handles layout, routing state, and data
+   orchestration — not feature logic
+3. Check for inline UI blocks that should be extracted to components
+4. If a feature similar to one on another page is being built,
+   flag it for extract-then-share per Section 17.3
+
+Return: file name, line count, and specific extraction recommendations.
+```
+
+**`test-coverage.md`** — Automatically engages after feature completion to verify role-based test cases are updated.
+
+```markdown
+# Test Coverage Agent
+
+## Description
+Verifies that role-based test cases in tests/role-tests.md are
+updated when features affecting auth, permissions, or role-specific
+UI are modified.
+
+## When to Use
+Automatically engage when:
+- A feature touching auth or permissions is completed
+- New role-specific UI is added
+- Existing role boundaries are modified
+
+## Instructions
+1. Read tests/role-tests.md
+2. Identify which roles are affected by the current changes
+3. Check if test cases exist for the new or modified functionality
+4. If test cases are missing, draft them in the standard format
+   and propose additions
+
+Return: list of affected roles, existing coverage, and proposed
+new test cases.
+```
+
+Custom subagents are optional but recommended for Full Build projects. The project-specific `claude.md` should note which custom subagents are included and the kickoff prompt should instruct Claude Code to create them during project scaffolding.
+
+#### 20.3.4 Planning for Parallel Execution
+During the plan phase, Claude Code must identify parallelization opportunities at **both** levels:
+
+**Phase-level parallelism (Agent Teams):** Which phases or major workstreams can run simultaneously? Example: "Phase 2 (schema) and Phase 3 (business logic layer) can run in parallel if the logic layer doesn't depend on schema changes being complete."
+
+**Task-level parallelism (Subagents):** Within each phase, which tasks are independent? Example: "Phase 5 has three independent UI modules — spawn parallel tasks for Dashboard components, Admin components, and Reporting components."
+
+The plan must explicitly identify:
+- Which phases are candidates for Agent Teams (if Full Build)
+- Which tasks within each phase are candidates for subagents
+- Dependencies between parallel tasks (what must complete before what starts)
+- File ownership per task (no two tasks edit the same files)
+- Estimated token cost impact of parallelization
+
+The project owner must approve the parallel execution plan before any parallel work begins.
 
 ### 20.4 Pre-Branch Checklist (Ongoing Development)
 After the initial build ships, ongoing feature work and bug fixes must follow branch discipline. Before creating a new branch for any change, Claude Code must verify:
@@ -1175,6 +1368,189 @@ After the branch work is complete:
 - Deploy Edge Functions from the tagged commit (Section 8.6).
 
 This checklist prevents the common failure mode where a branch carries forward half-finished work from a previous task, making it impossible to tell whether a bug is from the new change or leftover debris.
+
+### 20.5 Claude Code Hooks (Automated Rule Enforcement)
+Claude Code supports **hooks** — scripts that auto-trigger on specific lifecycle events during a session. Hooks are configured in `.claude/settings.json` and run locally on the developer's machine. Unlike custom subagents (which are advisory), hooks can **block actions** by returning a JSON `{"decision": "block"}` response.
+
+Hooks provide automated enforcement of framework rules at the tool level — before code is written, after code is written, and when sessions start or stop.
+
+#### 20.5.1 Hook Event Types
+Claude Code supports 12 hook events:
+
+| Event | When It Fires | Enforcement Use |
+|---|---|---|
+| `PreToolUse` | Before any tool executes | Block dangerous commands, validate file targets |
+| `PostToolUse` | After a tool completes successfully | Check output quality, verify patterns |
+| `PostToolUseFailure` | After a tool fails | Log failures for lessons-learned |
+| `PermissionRequest` | When Claude requests a permission | Log privileged action attempts |
+| `Notification` | When Claude sends a notification | — |
+| `Stop` | When a session completes | End-of-session reminders and checks |
+| `SubagentStart` | When a subagent spawns | Track parallel work |
+| `SubagentStop` | When a subagent completes | Capture subagent results |
+| `PreCompact` | Before context compaction | Preserve critical context |
+| `UserPromptSubmit` | When the user sends a prompt | Validate or log user inputs |
+| `SessionStart` | When a session begins | Log session metadata |
+| `SessionEnd` | When a session ends | Log session completion reason |
+| `TeammateIdle` | When a teammate is about to go idle (Agent Teams only) | Exit code 2 to send feedback and keep teammate working |
+| `TaskCompleted` | When a task is marked complete (Agent Teams only) | Exit code 2 to block completion — use as quality gate |
+
+The last two events (`TeammateIdle` and `TaskCompleted`) are only available when using Agent Teams. They provide automated quality gates: `TaskCompleted` hooks can validate a teammate's work against acceptance criteria and reject it if it doesn't pass, preventing premature task completion.
+
+#### 20.5.2 Hook Configuration
+Hooks are defined in `.claude/settings.json` alongside permissions and environment variables. Each hook specifies an event type, an optional matcher (regex for filtering), and a command to execute:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python .claude/hooks/pre_tool_use.py"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python .claude/hooks/post_tool_use.py"
+      }]
+    }],
+    "Stop": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python .claude/hooks/stop.py"
+      }]
+    }]
+  }
+}
+```
+
+Hook scripts receive event data via stdin as JSON. They can read the data, perform checks, and optionally return a JSON response to block the action.
+
+#### 20.5.3 Recommended Enforcement Hooks
+The following hook scripts enforce key framework rules automatically. These are templates — adapt them to the project's specific needs.
+
+**`.claude/hooks/pre_tool_use.py` — Pre-execution guardrails:**
+```python
+#!/usr/bin/env python3
+"""Block dangerous operations and enforce framework rules before tool execution."""
+import sys, json
+
+def main():
+    event = json.loads(sys.stdin.read())
+    tool_name = event.get("tool_name", "")
+    tool_input = event.get("tool_input", {})
+
+    # Block destructive commands
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if "rm -rf /" in command or "rm -rf /*" in command:
+            print(json.dumps({
+                "decision": "block",
+                "reason": "Blocked: destructive rm -rf command"
+            }))
+            return
+
+    # Block direct modification of governing documents without approval
+    if tool_name in ("Write", "Edit"):
+        file_path = tool_input.get("file_path", "")
+        protected_files = ["CLAUDE.md", "prd.md"]
+        for protected in protected_files:
+            if file_path.endswith(protected):
+                print(json.dumps({
+                    "decision": "block",
+                    "reason": f"Blocked: {protected} is a governing document. "
+                              f"Propose changes to project owner per Section 22.5."
+                }))
+                return
+
+if __name__ == "__main__":
+    main()
+```
+
+**`.claude/hooks/post_tool_use.py` — Post-execution quality checks:**
+```python
+#!/usr/bin/env python3
+"""Check output quality after tool execution."""
+import sys, json, os
+
+def main():
+    event = json.loads(sys.stdin.read())
+    tool_name = event.get("tool_name", "")
+    tool_input = event.get("tool_input", {})
+
+    # Warn when a file exceeds the 200-line soft ceiling
+    if tool_name in ("Write", "Edit"):
+        file_path = tool_input.get("file_path", "")
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                line_count = sum(1 for _ in f)
+            if line_count > 200 and "/pages/" in file_path:
+                # Log warning (doesn't block, but surfaces the issue)
+                print(json.dumps({
+                    "warning": f"File {file_path} is {line_count} lines. "
+                               f"Consider decomposing per Section 17.2."
+                }))
+
+if __name__ == "__main__":
+    main()
+```
+
+**`.claude/hooks/stop.py` — End-of-session reminders:**
+```python
+#!/usr/bin/env python3
+"""Remind about documentation updates when a session completes."""
+import sys, json, os
+
+def main():
+    event = json.loads(sys.stdin.read())
+
+    reminders = []
+
+    # Check if lessons-learned.md exists and remind to update it
+    if not os.path.exists("lessons-learned.md"):
+        reminders.append("No lessons-learned.md found. Create one if any "
+                        "failures or fixes occurred during this session.")
+
+    # Check if role tests exist
+    if not os.path.exists("tests/role-tests.md"):
+        reminders.append("No tests/role-tests.md found. Create role-based "
+                        "test cases per Section 14.4.")
+
+    if reminders:
+        print(json.dumps({"reminders": reminders}))
+
+if __name__ == "__main__":
+    main()
+```
+
+#### 20.5.4 Hook Security Considerations
+Hooks run locally and have full access to the filesystem. Follow these rules:
+
+- **Never log sensitive data in hook output.** Hook scripts should not echo environment variables, API keys, or user credentials to stdout or log files.
+- **Hooks must not make external network calls** unless explicitly approved in the PRD. Sending tool inputs and outputs to external APIs for summarization or logging creates a data exposure risk, especially when working with client financials, legal documents, or PII.
+- **Keep hooks lightweight.** Hooks run synchronously in the execution pipeline. A slow hook blocks Claude Code from proceeding. Target execution under 500ms.
+- **Test hooks before relying on them.** A broken hook that returns invalid JSON can disrupt Claude Code's operation. Test each hook script independently before adding it to `settings.json`.
+- **Hooks supplement, not replace, the build contract.** Hooks catch common violations automatically, but they cannot enforce every rule in the framework. Manual verification and the freeze audit remain the authoritative checks.
+
+#### 20.5.5 Project Setup for Hooks
+When hooks are used, the project folder structure includes:
+
+```
+.claude/
+  agents/             # Custom subagents (Section 20.3.3)
+  hooks/              # Hook enforcement scripts
+    pre_tool_use.py   # Pre-execution guardrails
+    post_tool_use.py  # Post-execution quality checks
+    stop.py           # End-of-session reminders
+  settings.json       # Hook configuration + permissions + env
+```
+
+Hooks are optional but recommended for Full Build projects. For Express Build, the `pre_tool_use.py` guardrail (blocking destructive commands and governing document modifications) is recommended as a minimal safety layer.
+
+The project-specific `claude.md` should note which hooks are active and what they enforce. The kickoff prompt should instruct Claude Code to create hook scripts during project scaffolding if hooks are declared in the PRD.
 
 ---
 
@@ -1198,6 +1574,9 @@ Before production readiness, Claude must confirm:
 - [ ] No auth diagnostic logging prefixes remain in production code
 - [ ] No page file exceeds ~200 lines — decomposed into components (per Section 17.2)
 - [ ] No duplicated feature implementations across pages — shared components extracted (per Section 17.3)
+- [ ] Custom subagents created in `.claude/agents/` for Full Build projects (security-reviewer, component-checker, test-coverage recommended — per Section 20.3.3)
+- [ ] Hook enforcement scripts created in `.claude/hooks/` with pre_tool_use guardrails active (per Section 20.5 — recommended for all projects, required for Full Build)
+- [ ] Hooks do not log sensitive data or make unauthorized external network calls (per Section 20.5.4)
 - [ ] Tenant isolation proven (if applicable)
 - [ ] No recursive authorization logic
 - [ ] No unused schema artifacts
@@ -1312,7 +1691,7 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-06 |
-| Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, expanded Freeze Audit Checklist |
+| Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Parallel Execution expanded to cover Agent Teams + Subagents + Custom Subagents, Claude Code Hooks as automated rule enforcement with template scripts, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |
 
 This document governs all Claude-built applications unless superseded by a higher-version Claude.md.

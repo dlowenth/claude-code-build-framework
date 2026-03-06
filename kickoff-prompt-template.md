@@ -94,7 +94,7 @@ If **Express Build**:
 If **Full Build**:
 - Keep the standard phased structure, trimmed to applicable phases.
 
-- If the project uses **Express Build**, remove the Agent Teams subsection (20.2 in master) — it only applies to Full Build.
+- If the project uses **Express Build**, remove the Agent Teams subsection (20.3.1 in master) and the Custom Subagents subsection (20.3.3) — Agent Teams and custom subagents only apply to Full Build. Keep the Subagents via Task Tool subsection (20.3.2) as subagents are available in any build mode.
 
 **What to adjust:**
 - Update the Default Technology Stack table (Section 2) to reflect this project's actual stack.
@@ -119,6 +119,7 @@ If **Full Build**:
 - Reuse over recreation and documentation integrity
 - Mid-build error recovery protocol
 - Pre-branch checklist (for ongoing development)
+- Hook enforcement (pre_tool_use guardrails at minimum — Section 20.5)
 - Freeze audit checklist (trimmed to relevant items)
 - The versioning table at the end
 
@@ -174,14 +175,42 @@ If the project uses Full Build mode and the plan contains phases with independen
 - Instruct Claude Code that Agent Teams are enabled and available
 - Suggest where in the phased plan agent teams could accelerate execution (e.g., "Phase 5 UI can be split across teammates by module," or "Phase 2 schema + Phase 3 logic layer can run in parallel if no dependencies")
 - Remind Claude Code of agent team constraints:
+  - Teammates communicate via mailbox and share a task list with dependency tracking — design tasks with clear ownership but expect inter-agent coordination
   - Each teammate gets `claude.md` and project context automatically but NOT the lead's conversation history — include task-specific details in spawn prompts
   - Structure tasks so teammates own different files — no two teammates editing the same file
-  - The lead should coordinate and synthesize, not implement alongside teammates
-  - Keep teams small (2–4 teammates) to manage token cost and coordination overhead
-  - Agent teams are for parallel exploration and independent modules — sequential dependencies should stay with a single session
+  - You can interact with individual teammates directly to course-correct without going through the lead
+  - Keep teams small (2–4 teammates) — each teammate is ~5x token cost
+  - Agent teams are ephemeral — they exist for one session then disappear, no `/resume`
+  - Agent teams are for collaborative exploration and independent modules — if tasks don't need inter-agent discussion, use subagents instead
 - Include this instruction: "When executing phases, evaluate whether agent teams would accelerate the work. If a phase has 3+ independent workstreams that touch different files, propose a team structure. Otherwise, execute as a single session."
 
 Note: Agent Teams are not applicable to Express Build. Express Build executes in a single pass and the coordination overhead of agent teams would slow it down rather than help.
+
+**Subagents and Task-Level Parallelism (Both Build Modes):**
+The kickoff prompt should instruct Claude Code to identify task-level parallelism within each phase (or within the single Express Build pass) where independent work can be spawned as subagents via the Task tool. The plan must explicitly identify:
+- Which tasks within each phase are independent and can run as parallel subagents
+- File ownership per task (no two subagents editing the same files)
+- Dependencies between parallel tasks (what must complete before what starts)
+
+Include this instruction: "Within each phase, identify tasks that can run as parallel subagents. For each parallel group, specify: the task description, the files each subagent owns, and any dependencies. Use explicit prompting (e.g., 'Run Task 1, Task 2, and Task 3 in parallel') rather than hoping for automatic parallelization."
+
+**Custom Subagents (Full Build only):**
+If the project uses Full Build mode, the kickoff prompt should instruct Claude Code to create custom subagent definitions in `.claude/agents/` during project scaffolding. At minimum, recommend:
+- `security-reviewer.md` — auto-triggers on auth/RLS/permission changes
+- `component-checker.md` — auto-triggers when page files are modified
+- `test-coverage.md` — auto-triggers after feature completion to verify test cases
+
+Include this instruction: "During project scaffolding, create the `.claude/agents/` directory and populate it with the recommended custom subagent definitions from `claude.md` Section 20.3.3. These agents will auto-trigger during the build to enforce security, architecture, and testing standards."
+
+**Hooks (Automated Rule Enforcement — Both Build Modes):**
+The kickoff prompt should instruct Claude Code to create hook enforcement scripts in `.claude/hooks/` during project scaffolding. At minimum:
+- `pre_tool_use.py` — blocks destructive commands and modifications to governing documents (recommended for all projects)
+- `post_tool_use.py` — warns when page files exceed size thresholds (recommended for Full Build)
+- `stop.py` — end-of-session reminders to update lessons-learned.md and role tests (recommended for Full Build)
+
+Include this instruction: "During project scaffolding, create the `.claude/hooks/` directory and populate it with the enforcement hook scripts from `claude.md` Section 20.5.3. Update `.claude/settings.json` to register the hooks for PreToolUse, PostToolUse, and Stop events. At minimum, the `pre_tool_use.py` guardrail must be active to block destructive commands and protect governing documents."
+
+For Express Build, only `pre_tool_use.py` is recommended. For Full Build, all three are recommended. If Agent Teams are used, also configure `TaskCompleted` hooks as quality gates to validate teammate work before tasks are marked complete (per `claude.md` Section 20.5.1).
 
 **Both modes:**
 - Reminds Claude Code of the key constraints **that are relevant to this specific project** from `claude.md` — do not list constraints you removed. If the project includes LLM calls, remind Claude Code of: model tier selection per task, rate limit handling requirements, Python as default for batch scripts, sequential-first parallelism, and cost logging.
