@@ -23,12 +23,14 @@ Every new project must declare the following before any planning begins. The PRD
 | Status | Draft / In Review / Approved |
 | Expected User Scale | `<<SCALE>>` |
 | Tenancy Model | Single-tenant / Multi-tenant (shared schema) / Multi-tenant (isolated) |
-| Auth Provider | Discord OAuth (default) / Other |
+| Auth Provider | Discord OAuth (default) / Clerk / Other |
+| Billing Provider | None / Clerk Billing / Stripe / Other |
 | Backend | Supabase (default) |
 | Frontend Framework | React (default) / Other |
 | Deployment Target | Railway (default) / Other |
 | Edge Functions | Supabase Edge Functions (default) / Other |
 | External Integrations | `<<LIST>>` |
+| Observability | None / PostHog / Sentry / Other (see Section 13.3) |
 | Repository | GitHub (required) |
 | Build Mode | Express Build / Full Build (see Section 1.5) |
 
@@ -95,17 +97,20 @@ The following stack is the default for all projects unless the PRD explicitly de
 |---|---|---|
 | Frontend | React | — |
 | Backend / Database | Supabase | Postgres + Auth + Realtime + Storage |
-| Auth | Discord OAuth | Via Supabase Auth; roles stored internally |
+| Auth | Discord OAuth | Via Supabase Auth; roles stored internally. Alternative: Clerk (see Section 2.2) |
+| Billing | None | If needed: Clerk Billing (if using Clerk for auth) or Stripe |
 | Edge Functions | Supabase Edge Functions | Server-side logic, webhooks, integrations |
 | Deployment | Railway | Via Railway CLI or dashboard |
 | Local Development | localhost | All testing occurs locally before deploy |
 | Version Control | Git + GitHub | Required for all projects |
+| Observability | Per PRD | Analytics, error tracking, session replay (see Section 13.3) |
 | State Management | Per PRD | Declared in PRD |
 | UI Component Library | Per PRD | Declared in PRD |
 
 ### 2.1 Pre-Approved Dependencies
 The following packages are pre-approved and do not require explicit approval per project:
 - `@supabase/supabase-js` — Supabase client
+- `@clerk/clerk-react` — Clerk auth client (if using Clerk as auth provider)
 - `react-router-dom` — Routing
 - `tailwindcss` — Styling (if declared in PRD)
 - `lucide-react` — Icons
@@ -113,6 +118,7 @@ The following packages are pre-approved and do not require explicit approval per
 - `zod` — Schema validation
 - `zustand` — Lightweight state management (if declared in PRD)
 - `recharts` — Charting (if needed)
+- `posthog-js` — Analytics and error tracking (if declared in PRD)
 
 Any dependency not on this list requires explicit approval before installation. Claude must state the dependency name, its purpose, and its bundle size impact before requesting approval.
 
@@ -126,24 +132,59 @@ When building batch scripts per Section 18.5, the following Python packages are 
 - `pandas` — Data manipulation (if dataset size warrants it)
 - `tqdm` — Progress bars for long-running operations
 
-### 2.2 OAuth Standard
-Default OAuth provider: **Discord**
+### 2.2 Authentication Provider
+Default OAuth provider: **Discord** via Supabase Auth.
 
-Requirements:
-- Discord OAuth must be primary authentication unless explicitly changed.
+Alternative: **Clerk** — recommended when the application requires subscription billing, consumer-facing sign-up flows (email/password, social providers, passkeys), prebuilt UI components, or GDPR compliance tooling. Clerk integrates with Supabase as a third-party auth provider, preserving RLS and Edge Functions.
+
+Requirements (all auth providers):
+- Auth provider must be primary authentication unless explicitly changed.
 - Roles must not rely solely on OAuth claims.
 - Application roles must be stored internally in database tables.
 - Session strategy must be declared in PRD.
+
+### 2.2.1 Clerk + Supabase Integration Pattern
+When using Clerk as the auth provider with Supabase as the backend:
+
+**How it works:** Clerk authenticates users and issues JWTs. Supabase is configured to accept Clerk as a third-party auth provider via JWKS endpoint. Supabase validates incoming JWTs using Clerk's public keys. RLS policies use `auth.jwt()` to read Clerk session claims.
+
+**Key differences from Supabase Auth:**
+- Clerk uses **string-based user IDs** (e.g., `user_2abc123`), not UUIDs. The `auth.uid()` function cannot be used in RLS policies. Instead, extract the user ID from JWT claims: `auth.jwt() ->> 'sub'`.
+- RLS policies must reference Clerk's JWT claims instead of Supabase Auth's built-in functions.
+- The `onAuthStateChange` two-effect pattern (Section 5.2.3) does not apply — Clerk manages its own session lifecycle. Use Clerk's `useAuth()` and `useUser()` hooks instead.
+- The `getSession()` vs `getUser()` distinction (Section 5.2.2) does not apply — Clerk's `useSession()` hook handles token management.
+- Edge Functions still work — pass the Clerk session token in the Authorization header. The function validates it against Clerk's JWKS.
+
+**RLS policy pattern with Clerk:**
+```sql
+-- Extract Clerk user ID from JWT
+CREATE OR REPLACE FUNCTION requesting_user_id()
+RETURNS TEXT AS $$
+  SELECT auth.jwt() ->> 'sub';
+$$ LANGUAGE SQL STABLE;
+
+-- Example RLS policy using Clerk user ID
+CREATE POLICY users_select ON public.users FOR SELECT USING (
+  clerk_user_id = requesting_user_id()
+);
+```
+
+**Environment variables required (in addition to Supabase vars):**
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — Clerk publishable key
+- `CLERK_SECRET_KEY` — Clerk secret key (server-side only)
+
+When the PRD declares Clerk as auth provider, the project-specific `claude.md` should replace the Supabase Auth-specific sections (5.2.2, 5.2.3, 4.2.1) with the Clerk patterns above.
 
 ### 2.3 Identity Source of Truth
 Default: **Supabase Auth** (`auth.users`).
 
 Every project must create:
-- `public.profiles` — User profile data linked to `auth.users.id`
+- `public.profiles` — User profile data linked to `auth.users.id` (or Clerk user ID if using Clerk)
 - `public.tenant_memberships` (if multi-tenant) — Tenant/role/status junction
 
 Identity provider may vary per project if declared in PRD:
 - Supabase Auth (default)
+- Clerk (with Supabase as backend — see Section 2.2.1)
 - Custom JWT system
 - OAuth-only session
 - Other managed auth system
@@ -469,6 +510,40 @@ This applies to any Vite/React/Rollup project (and potentially other bundlers wi
 - Tagging releases is required before production deployment.
 - Branching strategy: declared in PRD (default: main + feature branches).
 
+### 8.5 Database Backup and Recovery Requirements
+Git versions source code, migration SQL files, and Edge Function source — the *instructions* for how infrastructure should look. It does **not** version live database state, deployed Edge Functions, or active RLS policies. Recovery from data-layer failures depends entirely on the database provider's backup infrastructure.
+
+**Supabase backup tiers:**
+- **Free plan:** Limited backups, no point-in-time recovery. Acceptable for development and internal tools only.
+- **Pro plan:** Daily automatic backups. Sufficient for low-traffic production applications.
+- **Pro plan + PITR add-on:** Point-in-time recovery to any moment. **Required for any application going to production with real users generating data that cannot be recreated.** The difference between daily backups and PITR is up to 24 hours of lost user data.
+
+**Rule:** The PRD must declare the backup tier. If Expected User Scale in Section 0 is anything beyond internal/demo use, the PRD must flag PITR as recommended and document the decision (enable or accept risk).
+
+### 8.6 Edge Function Deployment Discipline
+Supabase does **not** maintain a version history of deployed Edge Functions. There is no rollback button. If a broken Edge Function is deployed, the only recovery path is to fix the code and redeploy from Git.
+
+**Rule: Edge Functions must only be deployed from committed, tagged code on the main branch.**
+
+- Never deploy from a feature branch.
+- Never deploy from uncommitted local changes.
+- Every deployment must be traceable to a specific Git commit.
+- The Edge Function Deployment Manifest in the PRD (Section 15) must be updated with each deployment.
+
+If every deployment is from a known Git state, then Git is an effective version control system for Edge Functions — because you can always check out the exact commit and redeploy it. If someone deploys from uncommitted changes, there is no record of what is actually running in production.
+
+### 8.7 Schema Drift Prevention
+All schema changes — tables, columns, RLS policies, functions, triggers — must go through numbered SQL migration files (Section 10). Direct modifications via the Supabase dashboard are prohibited for production environments.
+
+**What must never be modified directly in the dashboard:**
+- RLS policies
+- Database functions and triggers
+- Table schema (columns, types, constraints)
+- Indexes
+- Storage bucket policies
+
+If a dashboard modification is made during development for testing purposes, it must be captured in a migration file before the change is considered complete. The freeze audit verifies that migration files match the current live schema state.
+
 ---
 
 # 9. Error Handling and Debug Strategy
@@ -597,6 +672,13 @@ Preferred over hard delete for tenant-scoped data:
 - `deleted_by` (user_id)
 - Purge policy must be declared in PRD if applicable.
 
+### 12.3 Data Safety During Development and Testing
+**Rule: Never delete production data.** This applies during development, testing, debugging, and feature work. Claude Code must not run DELETE statements against production data, clear tables, or "clean up" records as part of any workflow.
+
+The only exception: if a test protocol explicitly creates a specific test record for the purpose of verifying create/delete functionality, that exact test record may be deleted as part of the test — and only if the deletion is non-cascading and safe (no foreign key cascades that could affect other data).
+
+This rule exists because applications built with this framework are designed to scale to production with real users. The testing and development process must work *alongside* existing data, not by wiping and rebuilding. All development should assume the database contains data that matters.
+
 ---
 
 # 13. Performance Requirements
@@ -616,6 +698,27 @@ At minimum, tenant-scoped tables must have:
 - Realtime subscriptions must be tenant-safe.
 - Validate tenant membership before subscribing where possible.
 - Document which tables use Realtime in the PRD.
+
+### 13.3 Production Observability
+For any application shipping to real users beyond internal/demo use, the PRD must declare an observability strategy. Without observability, you have zero visibility into how users interact with the application and what errors they encounter.
+
+**Error tracking (required for production applications):**
+Production applications must include server-side error capture and alerting. Tools: Sentry, PostHog, LogRocket, or equivalent. Errors must be captured automatically — not dependent on users reporting them. Error tracking must include: error message, stack trace, user context (role, tenant), and timestamp. Alerts must notify the development team when new error types appear.
+
+**Analytics (required when PRD declares user scale > 50):**
+When an application will serve more than a handful of users, feature adoption tracking becomes essential for product decisions. Requirements: track key user actions (feature usage, conversion funnels, retention), surface data in a dashboard accessible to the project owner, and review adoption data before building new features.
+
+**Feature adoption tracking as a build discipline:**
+When a new feature is implemented, the build must include tracking events for that feature's key interactions. This is a one-line addition per feature but compounds into real product intelligence over time. Every new feature must have at minimum: a tracking event for first use, a tracking event for repeated use, and visibility in the analytics dashboard.
+
+**Session replay (recommended for consumer-facing applications):**
+Session replay tools (PostHog, LogRocket, FullStory) let you watch how users actually interact with the application. Recommended for any application where UX decisions are being actively iterated.
+
+**Implementation:**
+- Analytics and error tracking should be initialized once in the application root, not scattered across components.
+- Tracking events should use a consistent naming convention declared in the PRD.
+- Error tracking must be configured before the first production deployment — not added after problems are reported.
+- The observability tool and configuration must be documented in the PRD's environment variables section.
 
 ---
 
@@ -639,7 +742,28 @@ Before any multi-tenant application is considered complete:
 - Storage objects cannot be read across tenants (if Storage is used)
 - Admin-only actions are blocked for members at DB level
 
-### 14.4 Automated Testing (When Ready)
+### 14.4 Role-Based Test Cases (Living Document)
+Every application must maintain a `tests/role-tests.md` file in the repository that defines test scenarios for each user role. This file is a living document that evolves as the application grows.
+
+**During initial build:** Establish baseline test cases for each role defined in the PRD's permissions matrix. At minimum, each role must have test cases covering: login and session creation, access to permitted pages/features, denial of access to restricted pages/features, CRUD operations the role is authorized to perform, and verification that unauthorized CRUD operations are blocked.
+
+**During ongoing development:** Any feature that touches auth, permissions, or role-specific UI must add new test cases to `tests/role-tests.md`. Any bug fix related to role boundaries must add a regression test case.
+
+**Test execution:** After any change that affects auth, permissions, or role-specific functionality, the full role-based test suite for affected roles must be executed. Claude Code should use browser verification (Chrome plugin) when available to validate: UI renders correctly for the role, console shows no errors, network requests return expected status codes, and the feature behaves as specified.
+
+**Format for test cases:**
+```markdown
+## Role: <<ROLE_NAME>>
+
+### TC-001: <<Test case name>>
+- **Precondition:** <<Setup required>>
+- **Steps:** <<What to do>>
+- **Expected result:** <<What should happen>>
+- **Status:** Pass / Fail / Not tested
+- **Last verified:** <<Date>>
+```
+
+### 14.5 Automated Testing (When Ready)
 When adopted, automated tests are required for:
 - Calculation engine (unit tests for each formula, edge cases, regressions)
 - Authorization boundary tests
@@ -750,6 +874,41 @@ const fetchUsers = useCallback(async () => {
 
 **Rule 3: Watch for error → re-render → retry loops.**
 The most dangerous pattern is: API call fails → error handler fires (e.g., `toast.error()`) → state change causes re-render → unstable reference triggers `useEffect` → API call fires again → infinite loop. This pattern can flood the backend with requests and requires killing the server to stop. Every `useEffect` that makes an API call must be audited for this loop potential during code review.
+
+### 17.2 Component Architecture and Decomposition
+Pages must be layout and orchestration only — they compose components, manage routing state, and handle page-level data fetching. All UI blocks (forms, tables, modals, filters, cards, feature-specific logic) must be extracted into dedicated component files.
+
+**File size threshold:** No single component or page file should exceed approximately 200 lines. When a file approaches this threshold, decompose it into smaller components. This is a soft ceiling — the goal is readability and maintainability, not rigid enforcement. But a 600-line page file is always a signal that decomposition is overdue.
+
+**Why this matters for AI-assisted development:**
+- **Token efficiency:** When Claude Code needs to fix a table filter, it loads the 80-line filter component, not the entire 600-line page. Across dozens of fixes and enhancements, this is a significant cost difference.
+- **Blast radius:** A change to one component doesn't risk breaking unrelated components on the same page.
+- **Reuse:** Components extracted into their own files are immediately available for reuse on other pages (see Section 22.4).
+- **Debugging:** Error stack traces point to specific component files, not a monolithic page.
+
+**Folder structure:**
+```
+src/
+  pages/              # Page-level components (routing, layout, data orchestration)
+    Dashboard.jsx     # Composes DashboardStats, RecentActivity, QuickActions
+    AdminUsers.jsx    # Composes UserTable, UserFilters, InviteModal
+  components/
+    shared/           # Reusable across pages (buttons, modals, tables, form fields)
+    dashboard/        # Dashboard-specific components
+    admin/            # Admin-specific components
+```
+
+**Rule: When a feature is requested for a page, build it as a component from the start — not inline in the page file.** This prevents the pattern where features start inline, grow complex, and are painful to extract later.
+
+### 17.3 Feature Extraction Protocol (Extract-Then-Share)
+When a feature that exists on one page is requested for another page, the response is **never** to rebuild it from scratch on the second page. Instead:
+
+1. **Extract:** Move the existing feature implementation from the original page into a shared component in `components/shared/` (or an appropriate shared directory).
+2. **Refactor:** Generalize the component's props interface so it works in both contexts. Keep the API minimal — pass only what differs between the two use cases.
+3. **Replace:** Update the original page to import and use the shared component.
+4. **Add:** Import and use the same shared component on the new page.
+
+This is a strict protocol, not a suggestion. Duplicating feature implementations creates two diverging codebases for the same functionality, doubles the debugging surface, and guarantees inconsistent behavior over time. The short-term cost of extracting is always less than the long-term cost of maintaining duplicates.
 
 ---
 
@@ -999,6 +1158,24 @@ Claude Code Agent Teams allow multiple Claude Code instances to work in parallel
 **Planning requirement:**
 During the plan phase, Claude Code should identify which phases (if any) would benefit from Agent Teams and propose a team structure. The project owner must approve the team structure before execution.
 
+### 20.4 Pre-Branch Checklist (Ongoing Development)
+After the initial build ships, ongoing feature work and bug fixes must follow branch discipline. Before creating a new branch for any change, Claude Code must verify:
+
+1. **Working tree is clean.** No uncommitted changes exist. If there are uncommitted changes, commit or stash them before proceeding.
+2. **All migrations have been applied.** No pending migration files exist that haven't been run against the development database.
+3. **Edge Functions are in sync.** Locally modified Edge Functions have been deployed, or are committed and match the last deployed state. No Edge Function is running code that differs from what's in Git.
+4. **Main branch is current.** Pull the latest main before creating the branch.
+5. **Create branch with descriptive name.** Format: `feature/<<short-description>>` or `fix/<<short-description>>`.
+
+After the branch work is complete:
+- Commit with descriptive messages tied to the feature or fix.
+- Run the role-based test cases (Section 14.4) for any affected roles.
+- Merge to main only after verification passes.
+- Tag the release before deploying to production.
+- Deploy Edge Functions from the tagged commit (Section 8.6).
+
+This checklist prevents the common failure mode where a branch carries forward half-finished work from a previous task, making it impossible to tell whether a bug is from the new change or leftover debris.
+
 ---
 
 # 21. Freeze Audit Checklist
@@ -1008,16 +1185,19 @@ Before production readiness, Claude must confirm:
 - [ ] Architecture matches approved plan
 - [ ] Authorization boundaries enforced at data layer
 - [ ] Table-level GRANTs applied to all public tables with RLS (anon + authenticated roles)
-- [ ] First-login RLS policies handle unlinked auth_user_id state (Discord OAuth fallback)
+- [ ] First-login RLS policies handle unlinked auth_user_id state (Discord OAuth fallback — skip if using Clerk)
 - [ ] No RLS policies contain subqueries on auth.users (use auth.jwt() instead)
 - [ ] Edge Functions deployed with correct JWT verification flag (--no-verify-jwt only when function handles auth internally)
-- [ ] Client-side auth uses getSession() as default — getUser() not used in routine auth flows (per Section 5.2.2)
-- [ ] Auth initialization uses two-effect pattern — no async operations inside onAuthStateChange (per Section 5.2.3)
+- [ ] Edge Functions deployed from committed, tagged code on main branch (per Section 8.6)
+- [ ] Client-side auth uses getSession() as default — getUser() not used in routine auth flows (per Section 5.2.2 — skip if using Clerk)
+- [ ] Auth initialization uses two-effect pattern — no async operations inside onAuthStateChange (per Section 5.2.3 — skip if using Clerk)
 - [ ] TOKEN_REFRESHED events do not trigger redundant DB lookups
 - [ ] React context provider values are referentially stable (useMemo on all context objects)
 - [ ] No useCallback dependency arrays include React context objects (toast, api, etc.)
 - [ ] No useEffect that makes API calls has unstable dependencies that could cause render loops
 - [ ] No auth diagnostic logging prefixes remain in production code
+- [ ] No page file exceeds ~200 lines — decomposed into components (per Section 17.2)
+- [ ] No duplicated feature implementations across pages — shared components extracted (per Section 17.3)
 - [ ] Tenant isolation proven (if applicable)
 - [ ] No recursive authorization logic
 - [ ] No unused schema artifacts
@@ -1026,11 +1206,17 @@ Before production readiness, Claude must confirm:
 - [ ] No duplicated business logic
 - [ ] Manual isolation tests passed
 - [ ] Manual role boundary tests passed
+- [ ] Role-based test cases documented in `tests/role-tests.md` and passing (per Section 14.4)
 - [ ] Privileged actions logged
+- [ ] No production data deleted during development or testing (per Section 12.3)
 - [ ] Debug mode toggles correctly and does not leak data when off
 - [ ] Error handling covers all network calls and async operations
+- [ ] Error tracking configured for production (per Section 13.3 — if applicable)
+- [ ] Feature adoption tracking events implemented for key features (per Section 13.3 — if applicable)
 - [ ] Environment variables documented and no hardcoded secrets
 - [ ] Migration files match current schema state
+- [ ] No schema drift — no direct dashboard modifications to production RLS, functions, or triggers (per Section 8.7)
+- [ ] Database backup tier declared in PRD — PITR flagged as recommended for production user-facing apps (per Section 8.5)
 - [ ] Git repository is clean with descriptive commit history
 - [ ] `lessons-learned.md` reviewed — any items that should be folded into master `claude.md` flagged to project owner
 - [ ] `.npmrc` with `force=true` exists in project root (required for Windows → Railway cross-platform deploy)
@@ -1084,7 +1270,7 @@ Claude must not:
 - Write to console in production mode without debug flag
 
 ## 22.4 Reuse Over Recreation
-Before creating a new utility, helper, component, or script, Claude must check whether one already exists in the project. Search the codebase for similar functionality. If a suitable implementation exists, use or extend it. Do not build parallel implementations of the same logic. This applies to auth helpers, API wrappers, UI components, data transformation utilities, and any shared code. Combined with the DRY requirement in Section 6, this prevents the codebase from accumulating redundant implementations that diverge over time.
+Before creating a new utility, helper, component, or script, Claude must check whether one already exists in the project. Search the codebase for similar functionality. If a suitable implementation exists, use or extend it. Do not build parallel implementations of the same logic. This applies to auth helpers, API wrappers, UI components, data transformation utilities, and any shared code. Combined with the DRY requirement in Section 6 and the Feature Extraction Protocol in Section 17.3, this prevents the codebase from accumulating redundant implementations that diverge over time. When a feature is requested for a second page, always extract-then-share per Section 17.3 — never rebuild.
 
 ## 22.5 Documentation Integrity
 Do not modify `CLAUDE.md`, `prd.md`, or any workflow/documentation file without explicit approval from the project owner. These files are governing artifacts, not living notes. If a documentation update is warranted by a discovery during the build, propose the change and wait for approval. The only exception is appending to `lessons-learned.md` in the project root, which is designed for in-build documentation of failures and fixes (see Section 20.2).
@@ -1122,10 +1308,11 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 1.1 |
+| Version | 1.2 |
 | Status | Active |
 | Owner | <<OWNER>> |
-| Last Updated | 2025-02-22 |
+| Last Updated | 2026-03-06 |
+| Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |
 
 This document governs all Claude-built applications unless superseded by a higher-version Claude.md.

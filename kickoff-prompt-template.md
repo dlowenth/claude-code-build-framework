@@ -105,15 +105,24 @@ If **Full Build**:
 **What to never remove regardless of project or build mode:**
 - Plan-first discipline (even Express Build requires plan confirmation before coding)
 - Security > velocity principle
+- Deterministic over probabilistic principle
 - No assumption drift / stop-and-ask triggers
 - Debug mode specification (`?debug=true` toggle)
 - Error handling and UI state requirements
 - Git and version control requirements
+- Edge Function deployment discipline (deploy from tagged commits only)
+- Schema drift prevention (no direct dashboard modifications)
+- Component architecture and decomposition rules (Section 17.2)
+- Feature extraction protocol (Section 17.3)
+- Data safety during development and testing (never delete production data)
 - Code hygiene rules
+- Reuse over recreation and documentation integrity
+- Mid-build error recovery protocol
+- Pre-branch checklist (for ongoing development)
 - Freeze audit checklist (trimmed to relevant items)
 - The versioning table at the end
 
-**Versioning:** Set the version to `1.1-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.1, listing the build mode selected and a summary of what was removed or simplified.
+**Versioning:** Set the version to `1.2-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.2, listing the build mode selected and a summary of what was removed or simplified.
 
 ---
 
@@ -127,8 +136,9 @@ Fill in the PRD template using the project context I've provided. Follow these r
 - **Data Model (Section 9):** Propose a complete initial schema based on the described workflows. Include table names, field names with types, relationships, indexes, and relevant security notes.
 - **Permissions Matrix (Section 4):** Fill in based on the roles and access patterns described in the context. If roles aren't explicitly stated, propose a role structure and mark it `[INFERRED]`.
 - **Environment Variables (Section 14):** List all required env vars based on the integrations and services described.
-- **Stack defaults** are: React, Supabase, Discord OAuth, Railway deployment, Supabase Edge Functions. Only note deviations if the context calls for them. If the context specifies a different stack, use that instead and update accordingly.
-- **The PRD must be consistent with the project-specific `claude.md`.** If you removed multi-tenancy from `claude.md`, the PRD should not reference tenant isolation. If you removed Supabase, the PRD should not reference RLS policies. If you removed the LLM section, mark PRD Section 15a as "Not applicable."
+- **Stack defaults** are: React, Supabase, Discord OAuth, Railway deployment, Supabase Edge Functions. If the context specifies Clerk as the auth provider, use Clerk instead and adjust auth-related sections accordingly per `claude.md` Section 2.2.1 (replace Supabase Auth patterns with Clerk patterns, adjust RLS to use string-based Clerk user IDs, remove Supabase Auth-specific sections like 5.2.2 and 5.2.3). Only note other deviations if the context calls for them. If the context specifies a different stack, use that instead and update accordingly.
+- **If the project context indicates user scale beyond internal/demo use,** include an Observability section in the PRD architecture (Section 8) and flag PITR as recommended for the database backup tier.
+- **The PRD must be consistent with the project-specific `claude.md`.** If you removed multi-tenancy from `claude.md`, the PRD should not reference tenant isolation. If you removed Supabase, the PRD should not reference RLS policies. If you removed the LLM section, mark PRD Section 15a as "Not applicable." If you selected Clerk as auth provider, remove Discord OAuth references and Supabase Auth-specific patterns from both files.
 
 **Build mode adjustments:**
 
@@ -190,7 +200,7 @@ A standalone file listing:
 - Any architectural decisions that need my input before the plan can be finalized
 - Suggested answers where you have a strong recommendation, marked as `[SUGGESTED]`
 
-Group these by category: Build Mode, Architecture, Roles/Permissions, Data Model, Business Logic, Integrations, UX, Claude.md Customization, Other.
+Group these by category: Build Mode, Architecture, Auth Provider, Roles/Permissions, Data Model, Business Logic, Integrations, Observability, UX, Claude.md Customization, Other.
 
 ---
 

@@ -111,17 +111,19 @@ Complete this matrix for every role defined in Section 3. This is a required art
 Write these as narrative flows. Keep them short and testable.
 
 ### 5.1 Authentication and Access
-- Auth method: Discord OAuth via Supabase Auth *(default — change if needed)*
+- Auth method: Discord OAuth via Supabase Auth *(default)* / Clerk *(alternative)*
 - Tenant access grant rules: `<<RULES>>`
 - Access revocation rules: `<<RULES>>`
 
-### 5.1.1 Auth Initialization Pattern (Required for Supabase Auth)
+### 5.1.1 Auth Initialization Pattern (Required for Supabase Auth — skip if using Clerk)
 Per `claude.md` Section 5.2.3, the application must use a two-effect pattern for auth initialization:
 - **Effect 1:** Subscribe to `onAuthStateChange`. Set session and auth user state synchronously only. No database queries inside the callback.
 - **Effect 2:** React to auth user state changes. Perform user lookup (query `public.users`) outside the auth callback scope.
 - On `TOKEN_REFRESHED` events, skip redundant DB lookups if user is already loaded.
 
 This is required because the Supabase JS v2 client does not fully commit the session until the callback returns. Async operations inside the callback will deadlock.
+
+If using Clerk, this section does not apply — Clerk manages its own session lifecycle via `useAuth()` and `useUser()` hooks. See `claude.md` Section 2.2.1 for Clerk-specific patterns.
 
 ### 5.2 Day-to-Day Workflow (Primary Persona)
 1. `<<STEP>>`
@@ -202,8 +204,9 @@ This section must be completed before planning begins. Values here override `cla
 - Background jobs: Yes / No
 
 ### Auth
-- Login method: Discord OAuth via Supabase Auth *(default)*
+- Login method: Discord OAuth via Supabase Auth *(default)* / Clerk *(alternative — see claude.md Section 2.2.1)*
 - Session strategy: `<<DESCRIPTION>>`
+- If using Clerk: billing/subscription integration needed? Yes / No
 
 ### Authorization
 - Source of truth: RLS policies *(default)*
@@ -214,6 +217,13 @@ This section must be completed before planning begins. Values here override `cla
 - Production: Railway *(default)*
 - Edge Functions: Supabase *(default)*
 - Cross-platform build: `.npmrc` with `force=true` required in project root when developing on Windows and deploying to Railway/Linux (per `claude.md` Section 8.3.1)
+- Database backup tier: Free / Pro / Pro + PITR *(per `claude.md` Section 8.5 — PITR recommended for production user-facing apps)*
+
+### Observability *(per `claude.md` Section 13.3)*
+- Error tracking tool: None / PostHog / Sentry / Other: `<<TOOL>>`
+- Analytics tool: None / PostHog / Mixpanel / Other: `<<TOOL>>`
+- Session replay: Yes / No
+- Event naming convention: `<<CONVENTION>>` *(e.g., `feature_name.action` → `site_health.scan_started`)*
 
 ### Agent Teams *(Full Build Only)*
 - Use Agent Teams for parallel execution: Yes / No / TBD during planning
@@ -269,11 +279,16 @@ Provide a block for each entity. Add entities as needed.
 - Debug mode does not expose sensitive data
 - Production console output is minimal
 - Table-level GRANTs are applied to all public tables with RLS
-- First-login flow works end-to-end (Discord OAuth user can authenticate and access their record before auth_user_id is linked)
+- First-login flow works end-to-end (skip if using Clerk — Clerk handles its own first-login flow)
 - No RLS policies subquery auth.users (all use auth.jwt() for user metadata)
 - Edge Functions deployed with correct JWT verification flags per `claude.md` Section 5.2.1
-- Client-side auth uses getSession() as default — getUser() not used in routine auth flows per `claude.md` Section 5.2.2
-- Auth initialization uses two-effect pattern (no async in onAuthStateChange) per `claude.md` Section 5.2.3
+- Edge Functions deployed from committed, tagged code on main branch per `claude.md` Section 8.6
+- Client-side auth uses getSession() as default per `claude.md` Section 5.2.2 (skip if using Clerk)
+- Auth initialization uses two-effect pattern per `claude.md` Section 5.2.3 (skip if using Clerk)
+- No production data deleted during development or testing per `claude.md` Section 12.3
+- No schema drift — all changes in migration files, no direct dashboard modifications per `claude.md` Section 8.7
+- Role-based test cases documented and passing per `claude.md` Section 14.4
+- Error tracking configured and capturing errors per `claude.md` Section 13.3 (if applicable)
 
 ---
 
@@ -329,8 +344,12 @@ List all environment variables the application requires. No hardcoded secrets in
 | `SUPABASE_URL` | Supabase project URL | Supabase dashboard |
 | `SUPABASE_ANON_KEY` | Supabase anonymous key | Supabase dashboard |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) | Supabase dashboard |
-| `DISCORD_CLIENT_ID` | Discord OAuth client ID | Discord developer portal |
-| `DISCORD_CLIENT_SECRET` | Discord OAuth client secret | Discord developer portal |
+| `DISCORD_CLIENT_ID` | Discord OAuth client ID (if using Discord auth) | Discord developer portal |
+| `DISCORD_CLIENT_SECRET` | Discord OAuth client secret (if using Discord auth) | Discord developer portal |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (if using Clerk auth) | Clerk dashboard |
+| `CLERK_SECRET_KEY` | Clerk secret key, server-side only (if using Clerk auth) | Clerk dashboard |
+| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project API key (if using PostHog) | PostHog dashboard |
+| `NEXT_PUBLIC_POSTHOG_HOST` | PostHog instance URL (if using PostHog) | PostHog dashboard |
 | `ANTHROPIC_API_KEY` | Anthropic API key (if app makes runtime LLM calls) | Anthropic console |
 | `<<VARIABLE>>` | `<<PURPOSE>>` | `<<SOURCE>>` |
 
@@ -338,17 +357,24 @@ List all environment variables the application requires. No hardcoded secrets in
 
 ## 15) Implementation Notes for Claude Code
 
-- Tech stack: React + Supabase + Discord OAuth *(defaults — list deviations only)*
+- Tech stack: React + Supabase + Discord OAuth *(defaults — list deviations only, including Clerk if used)*
 - Centralized permission helper required (per `claude.md` Section 4.2)
 - UI permissions never replace backend RLS
 - Calculations isolated into shared logic modules
 - Debug mode via `?debug=true` URL parameter (per `claude.md` Section 9.1)
 - SEO/structured data via shared utility component (per `claude.md` Section 19)
 - LLM usage governed by `claude.md` Section 18 (if applicable)
-- Client-side auth must use `getSession()` as default — no `getUser()` in routine flows (per `claude.md` Section 5.2.2)
-- Auth initialization must use two-effect pattern (per `claude.md` Section 5.2.3)
+- Client-side auth must use `getSession()` as default — no `getUser()` in routine flows (per `claude.md` Section 5.2.2 — skip if using Clerk)
+- Auth initialization must use two-effect pattern (per `claude.md` Section 5.2.3 — skip if using Clerk)
 - All React context provider values must be referentially stable with `useMemo` (per `claude.md` Section 17.1)
 - No React context objects in `useCallback` dependency arrays (per `claude.md` Section 17.1)
+- Pages must be layout/orchestration only — all UI blocks extracted into component files, ~200 line soft ceiling per file (per `claude.md` Section 17.2)
+- Features requested for multiple pages must use extract-then-share protocol — never duplicate (per `claude.md` Section 17.3)
+- Error tracking and analytics must be initialized before first production deploy (per `claude.md` Section 13.3 — if applicable)
+- Feature adoption tracking events must be included with every new feature (per `claude.md` Section 13.3 — if applicable)
+- Never delete production data during development or testing (per `claude.md` Section 12.3)
+- Edge Functions must only be deployed from committed, tagged code on main branch (per `claude.md` Section 8.6)
+- Role-based test cases must be maintained in `tests/role-tests.md` (per `claude.md` Section 14.4)
 - Additional build notes: `<<NOTES>>`
 
 ### Edge Function Deployment Manifest *(If Using Supabase Edge Functions)*
