@@ -123,7 +123,7 @@ If **Full Build**:
 - Freeze audit checklist (trimmed to relevant items)
 - The versioning table at the end
 
-**Versioning:** Set the version to `1.2-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.2, listing the build mode selected and a summary of what was removed or simplified.
+**Versioning:** Set the version to `1.3-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.3, listing the build mode selected and a summary of what was removed or simplified.
 
 ---
 
