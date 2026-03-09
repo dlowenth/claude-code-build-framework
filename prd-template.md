@@ -238,13 +238,34 @@ This section must be completed before planning begins. Values here override `cla
 - `pre_tool_use.py` guardrails: Yes (recommended for all projects) / No
 - `post_tool_use.py` quality checks: Yes / No
 - `stop.py` session reminders: Yes / No
+- `pre_compact.py` phase gate reminder: Yes (required for Full Build) / No
 - Custom hooks: `<<LIST OR NONE>>`
 - Hooks make external network calls: No (default) / Yes — requires approval and data exposure review
+
+### Sandbox and Permission Configuration *(per `claude.md` Section 20.6)*
+- Sandbox enabled: Yes (recommended — macOS, Linux, WSL2) / No (native Windows fallback)
+- Permission mode: `acceptEdits` (recommended with sandbox) / explicit allowlist (Windows fallback)
+- Network allowed domains: `<<LIST — e.g., registry.npmjs.org, github.com, *.supabase.co>>`
+
+### End-to-End Testing *(per `claude.md` Section 14.6)*
+- Use Playwright for automated E2E testing: Yes (recommended for UI projects) / No
+- Roles to test: `<<LIST OF ROLES FROM SECTION 3>>`
+- Core journeys to test: `<<LIST OF KEY WORKFLOWS FROM SECTION 5>>`
 
 ### Public-Facing Content
 - Does this application have public-facing content routes? Yes / No
 - If Yes, which routes? `<<LIST>>`
 - *(Required for SEO/crawl policy scoping per claude.md Section 19)*
+
+### Setup Guide Inventory *(per `claude.md` Section 8.8)*
+Every external service in the tech stack requires a setup guide in `docs/resources/`. List all tools below. Claude Code generates the guides; the human completes the manual steps.
+
+| Tool | Guide Filename | Purpose in This Project | Pre-Build Manual Steps? |
+|---|---|---|---|
+| `<<TOOL>>` | `<<tool>>-setup-guide.md` | `<<PURPOSE>>` | Yes / No |
+| `<<TOOL>>` | `<<tool>>-setup-guide.md` | `<<PURPOSE>>` | Yes / No |
+
+Guides contain only manual steps the human must perform — anything Claude Code automates is omitted. No guide may contain actual API keys, secrets, or credentials. See `claude.md` Section 8.8 for the required two-section structure (Pre-Build and Post-Build).
 
 ---
 
@@ -300,6 +321,7 @@ Provide a block for each entity. Add entities as needed.
 - No schema drift — all changes in migration files, no direct dashboard modifications per `claude.md` Section 8.7
 - Role-based test cases documented and passing per `claude.md` Section 14.4
 - Error tracking configured and capturing errors per `claude.md` Section 13.3 (if applicable)
+- No setup guide in `docs/resources/` contains actual API keys, secrets, or credentials per `claude.md` Section 8.8.7
 
 ---
 
@@ -391,6 +413,10 @@ List all environment variables the application requires. No hardcoded secrets in
 - Custom subagents recommended for Full Build — create security-reviewer.md, component-checker.md, test-coverage.md in `.claude/agents/` (per `claude.md` Section 20.3.3)
 - Plan must identify both phase-level (Agent Teams) and task-level (subagents) parallelism opportunities (per `claude.md` Section 20.3.4)
 - Hook enforcement scripts should be created during project scaffolding — at minimum `pre_tool_use.py` guardrails (per `claude.md` Section 20.5)
+- Setup guides must be generated in `docs/resources/` for every external service — Pre-Build sections populated before build starts, Post-Build sections appended after scaffolding (per `claude.md` Section 8.8)
+- Claude Code must self-audit against PRD acceptance criteria before declaring any phase complete — two-pass verification loop (per `claude.md` Section 20.1)
+- Playwright E2E tests should be generated and run before presenting the build as complete (per `claude.md` Section 14.6 — if applicable)
+- Review and install Claude Code plugins before Phase 0 / Step 2 — at minimum evaluate `frontend-design` for UI projects
 - Additional build notes: `<<NOTES>>`
 
 ### Edge Function Deployment Manifest *(If Using Supabase Edge Functions)*
@@ -453,7 +479,13 @@ Use this structure if Build Mode is **Express Build**.
 - Data model: `<<ENTITY LIST>>`
 - Auth approach: `<<DESCRIPTION>>`
 - Screen / route list: `<<LIST>>`
+- Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
 - **Gate:** Owner approves plan before any code is written.
+
+#### Step 1.5: Pre-Build Manual Setup
+Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before proceeding.
+- Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
+- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete.
 
 #### Step 2: Build
 Claude Code builds the full application in one pass, following this priority order:
@@ -472,6 +504,8 @@ Claude Code builds the full application in one pass, following this priority ord
 - `<<CRITERION>>`
 
 #### Step 3: Verify and Harden
+**Post-build setup:** Claude Code appends Post-Build sections to each setup guide in `docs/resources/`. The human completes all post-build manual steps (deployment config, DNS, verification).
+
 **Manual verification:**
 - `<<VERIFICATION_STEP>>`
 - `<<VERIFICATION_STEP>>`
@@ -490,6 +524,12 @@ Use this structure if Build Mode is **Full Build**. Each phase must include file
 - Files affected: `<<LIST>>`
 - Acceptance criteria: `<<LIST>>`
 - Manual verification steps: `<<LIST>>`
+- Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
+
+#### Phase 0.5: Pre-Build Manual Setup
+Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before Phase 1 begins.
+- Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
+- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete.
 
 #### Phase 1: Auth + Tenancy + RBAC
 - Scope: `<<DESCRIPTION>>`
@@ -528,7 +568,9 @@ Use this structure if Build Mode is **Full Build**. Each phase must include file
 
 #### Phase 8: Hardening + Freeze Audit
 - Scope: Full freeze audit per `claude.md` Section 21
-- Acceptance criteria: All checklist items pass
+- Claude Code appends Post-Build sections to all setup guides in `docs/resources/`
+- Human completes all Post-Build manual steps (deployment config, DNS, verification)
+- Acceptance criteria: All checklist items pass, all setup guides complete
 - Manual verification steps: Execute full checklist
 
 ---

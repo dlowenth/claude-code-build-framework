@@ -57,6 +57,22 @@ If any field is unresolved, it is an open question that must be answered before 
 - Each phase must include manual verification steps.
 - Freeze requires explicit audit checklist pass.
 
+**Phase Gate Rule (Compaction-Proof):**
+After completing each phase in a Full Build, **STOP**. Present verification results and wait for explicit approval before starting the next phase. Do not proceed to the next phase without human confirmation. This rule is permanent and must survive context compaction. **If you are unsure whether you should proceed, re-read CLAUDE.md — this instruction takes precedence over any compacted conversation context.**
+
+This rule exists because phase gate instructions in conversation history are lost during context compaction. `CLAUDE.md` persists on disk and is re-read by Claude Code. Behavioral instructions that must survive the entire build must live here, not only in the kickoff prompt.
+
+## 1.4 No Assumption Drift
+Claude must stop and ask if ambiguity exists around:
+- Tenancy model
+- Role boundaries
+- Ownership rules (who can create, edit, delete what)
+- Calculation definitions, rounding rules, time periods, defaults
+- Data retention rules, soft delete, and audit requirements
+- Integration credentials
+- Deployment configuration
+- External service dependencies
+
 ## 1.5 Build Mode
 Every project must declare a build mode. The build mode determines how much process structure is applied. Both modes enforce the same security, error handling, and code quality standards — the difference is execution ceremony, not safety.
 
@@ -72,17 +88,6 @@ Express Build still requires: plan approval before coding, stop-and-ask on ambig
 For complex applications (multi-tenant, 6+ entities, 3+ roles, calculation engines, integrations, compliance). Standard Phase 0–8 execution with verification gates at each phase.
 
 ### Build mode is declared in the PRD. If not declared, the kickoff process will assess complexity and recommend one.
-
-## 1.4 No Assumption Drift
-Claude must stop and ask if ambiguity exists around:
-- Tenancy model
-- Role boundaries
-- Ownership rules (who can create, edit, delete what)
-- Calculation definitions, rounding rules, time periods, defaults
-- Data retention rules, soft delete, and audit requirements
-- Integration credentials
-- Deployment configuration
-- External service dependencies
 
 ## 1.6 Deterministic Over Probabilistic
 When a task can be accomplished by a deterministic script (Python, SQL, bash), it must not be delegated to LLM reasoning. AI handles orchestration, planning, and judgment. Scripts handle data transformation, file operations, API calls, and calculations. Every additional probabilistic step compounds error rates — five steps at 90% accuracy each yields 59% overall success. This principle governs Section 18.4 (When NOT to Use an LLM) and applies broadly: if the output is fully predictable from the input, use a script.
@@ -119,6 +124,7 @@ The following packages are pre-approved and do not require explicit approval per
 - `zustand` — Lightweight state management (if declared in PRD)
 - `recharts` — Charting (if needed)
 - `posthog-js` — Analytics and error tracking (if declared in PRD)
+- `@playwright/test` — End-to-end testing (if declared in PRD, see Section 14.6)
 
 Any dependency not on this list requires explicit approval before installation. Claude must state the dependency name, its purpose, and its bundle size impact before requesting approval.
 
@@ -462,6 +468,22 @@ Each phase must output:
 
 Even in Express Build, the internal priority order (auth before UI, backend before frontend) must be followed. Claude Code does not need to stop between these stages, but must not invert the order.
 
+### Pre-Build Scaffolding (Both Build Modes)
+Before any application code is written, the following must be completed:
+
+1. **Plan approved** by project owner (both modes)
+2. **Setup guides generated** in `docs/resources/` with Pre-Build sections populated (Section 8.8)
+3. **Human completes all Pre-Build manual steps** — account creation, API key generation, `.env` population
+4. **`.env.example`** created with all variables documented (Section 8.3.1)
+5. **`.npmrc`** with `force=true` created (Section 8.3.2)
+6. **`.claude/settings.json`** created with sandbox + auto-allow configuration and project-specific network domains (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
+7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
+8. **`.claude/agents/`** populated with custom subagents (Section 20.3.3, Full Build only)
+9. **Claude Code plugins reviewed and installed** — run `/plugin marketplace` and evaluate available plugins before Phase 0 / Step 2 begins. At minimum, evaluate `frontend-design` for any project with UI components. Document installed plugins in `lessons-learned.md`.
+10. **`git init`** and initial commit with scaffolding files
+
+If a plugin is discovered mid-build, install it at the next phase gate and do a refinement pass rather than interrupting the current phase.
+
 ---
 
 # 8. Environment and Deployment Strategy
@@ -601,6 +623,130 @@ All schema changes — tables, columns, RLS policies, functions, triggers — mu
 - Storage bucket policies
 
 If a dashboard modification is made during development for testing purposes, it must be captured in a migration file before the change is considered complete. The freeze audit verifies that migration files match the current live schema state.
+
+### 8.8 Setup Guides (`docs/resources/`)
+Every external service, platform, API, or tool in the project's tech stack must have a corresponding setup guide in the `docs/resources/` folder. These guides document **only the manual steps the human must perform** — anything Claude Code can automate during the build is omitted.
+
+#### 8.8.1 Purpose and Audience
+Setup guides are written for a technical but not expert audience — someone who can follow step-by-step instructions but may not have used the specific tool before. They answer: "What do I need to do by hand to get this service ready for the build?"
+
+#### 8.8.2 Two-Section Structure
+Every setup guide must be split into exactly two sections:
+
+**Section 1: Pre-Build (Before Claude Code Starts)**
+Manual steps the human must complete before the build begins. These are things Claude Code cannot do — account creation, billing setup, OAuth app registration, clicking through dashboards, enabling features that require human authorization.
+
+Focus on:
+- Account creation and signup (with direct links)
+- Project/app creation in the service's dashboard
+- Enabling features that require manual authorization (e.g., enabling Realtime in Supabase, creating a Discord application)
+- Generating API keys and credentials (instructions only — never include actual values)
+- Configuring OAuth redirect URLs
+- Any approval processes or waitlists
+- Populating `.env` with the values obtained (reference `.env.example` for the variable names)
+
+**Section 2: Post-Build (After Scaffolding Completes)**
+Manual steps that remain after Claude Code has finished building. These are configuration steps that depend on the built application or require human verification in external dashboards.
+
+Focus on:
+- Deployment-specific configuration (e.g., setting environment variables in Railway dashboard)
+- DNS/domain configuration
+- Enabling production features (e.g., switching from Supabase free tier to Pro, enabling PITR)
+- Verification steps — how to confirm the integration is working end-to-end
+- Connecting services that require the deployed application URL (e.g., webhook endpoints)
+- Any manual testing or approval steps
+
+**What to exclude from both sections:**
+- Anything Claude Code handles during the build (schema creation, RLS policies, Edge Function deployment, code generation, dependency installation)
+- Generic documentation about what the tool does (link to official docs instead)
+- Actual API keys, secrets, tokens, passwords, or credentials — use placeholders like `your-api-key-here` or `<SUPABASE_ANON_KEY>` and reference `.env.example`
+
+#### 8.8.3 Required Guide Sections
+Each setup guide should include these sections where applicable. Mark sections "N/A" if genuinely irrelevant to the specific tool.
+
+```markdown
+# [Tool Name] Setup Guide
+
+## Pre-Build Setup (Do This Before Starting the Build)
+
+### Account and Project Creation
+[Steps to create account and project/app in the service]
+
+### Configuration
+[Service-specific settings that must be configured manually]
+
+### Credentials
+[How to generate/find the required API keys and tokens]
+[Reference .env.example for variable names — NEVER include actual values]
+
+### Integration Points
+[Where values from this tool need to be entered in other tools]
+[e.g., "Copy the Supabase URL and anon key into your .env file"]
+
+## Post-Build Setup (Do This After the Build Completes)
+
+### Deployment Configuration
+[Steps that require the built/deployed application]
+
+### Verification
+[How to confirm the integration is working end-to-end]
+
+### Troubleshooting
+[Known issues and their solutions]
+```
+
+#### 8.8.4 Identifying Tools That Need Guides
+Any external service the project depends on requires a setup guide. Common categories:
+- Hosting/deployment platforms (Railway, Vercel, Netlify, etc.)
+- Backend-as-a-service (Supabase, Firebase, etc.)
+- Authentication providers (Discord OAuth, Clerk, Google, Auth0, etc.)
+- AI/LLM APIs (Anthropic, OpenAI, etc.)
+- Source control platforms (GitHub, GitLab, etc.)
+- Email services (SendGrid, Resend, etc.)
+- Payment processors (Stripe, Clerk Billing, etc.)
+- Analytics/observability (PostHog, Sentry, etc.)
+- Domain/DNS providers
+- Any other external API or service
+
+#### 8.8.5 Generation Timing
+- **During the kickoff prompt process:** The PRD identifies all external tools and includes a setup guide inventory table.
+- **Before the build starts:** Claude Code generates skeleton setup guides with the Pre-Build sections populated. The human completes the pre-build manual steps before scaffolding begins.
+- **During/after scaffolding:** Claude Code appends the Post-Build sections based on what was actually built — specific Edge Function names, actual redirect URLs, deployment verification steps.
+- **Before the freeze audit:** All setup guides must be complete and verified.
+
+#### 8.8.6 `docs/resources/README.md` (Index File)
+Every project must include an index file listing all setup guides:
+
+```markdown
+# Project Resources — Setup Guides
+
+Setup guides for every external service used by this project.
+Each guide contains only the manual steps you need to perform.
+
+**IMPORTANT: No guide in this folder contains actual API keys,
+secrets, or credentials. All sensitive values go in .env
+(see .env.example in the project root).**
+
+## Pre-Build Checklist
+Complete the Pre-Build section of each guide before starting the build:
+
+| Guide | Tool | Pre-Build Done? |
+|---|---|---|
+| [tool]-setup-guide.md | [Tool Name] | [ ] |
+
+## Post-Build Checklist
+Complete the Post-Build section of each guide after the build finishes:
+
+| Guide | Tool | Post-Build Done? |
+|---|---|---|
+| [tool]-setup-guide.md | [Tool Name] | [ ] |
+```
+
+#### 8.8.7 Security Rules for Setup Guides
+- **NEVER** include actual API keys, secrets, tokens, passwords, or credentials in any setup guide
+- Use placeholders (`your-api-key-here`, `<VARIABLE_NAME>`) and reference `.env.example`
+- Setup guides are committed to Git — treat them as public documents
+- Cross-reference between guides when setup steps span multiple tools (e.g., "See the Supabase setup guide for where to find this value")
 
 ---
 
@@ -827,6 +973,42 @@ When adopted, automated tests are required for:
 - Authorization boundary tests
 - API response validation
 
+### 14.6 End-to-End Testing with Playwright (Recommended)
+For applications with a UI, Playwright end-to-end tests provide automated verification of the running application from the user's perspective. Claude Code can generate and execute these tests before presenting the build as complete, catching broken pages, permission failures, console errors, and UI regressions before the human ever touches the app.
+
+**When to use:**
+- Any project with UI components (recommended, not mandatory)
+- Especially valuable for applications with multiple user roles where permission boundaries must be verified from each role's perspective
+
+**What Playwright tests should cover:**
+- **Page load verification:** Every route loads without console errors or network failures
+- **Role-based access:** For each user role, verify accessible pages load correctly and restricted pages are properly denied
+- **Core user journeys:** The primary workflows defined in the PRD (e.g., login → create record → view record → edit → delete test record)
+- **Form submissions:** Key forms submit successfully with valid data and show appropriate errors with invalid data
+- **Permission enforcement from the UI:** A member role attempting an admin action sees a clean denial, not an error
+
+**Test structure:**
+```
+tests/
+  e2e/
+    setup.ts              # Auth helpers, test user creation
+    pages.spec.ts         # All routes load without errors
+    roles/
+      admin.spec.ts       # Admin-specific flows
+      member.spec.ts      # Member-specific flows
+    journeys/
+      [journey].spec.ts   # Core workflow tests from PRD
+```
+
+**Execution timing:**
+- **Express Build:** Run during Step 3 (Verify and Harden) after the full build pass
+- **Full Build:** Run at the end of Phase 5 (UI Implementation) and again at Phase 8 (Hardening)
+- **Ongoing development:** Run affected test suites before merging feature branches
+
+**Data safety:** Playwright tests must follow the data safety rules in Section 12.3. If a test creates a record, it may delete that specific test record as cleanup — but only if the deletion is non-cascading. Tests must work alongside existing data, not by wiping and rebuilding.
+
+**Self-fix loop:** When Playwright tests fail, Claude Code should analyze the failure, fix the underlying issue, and re-run the failing test. Only present results to the human after all tests pass or after two fix attempts per failure (then escalate).
+
 ---
 
 # 15. Auto-Remediation and AI Operations
@@ -952,7 +1134,12 @@ Pages must be layout and orchestration only — they compose components, manage 
     pre_tool_use.py
     post_tool_use.py
     stop.py
+    pre_compact.py
   settings.json       # Hook configuration + permissions + env
+docs/
+  resources/           # Setup guides for external services — see Section 8.8
+    README.md          # Index of all setup guides with pre/post-build checklists
+    [tool]-setup-guide.md  # One per external service
 src/
   pages/              # Page-level components (routing, layout, data orchestration)
     Dashboard.jsx     # Composes DashboardStats, RecentActivity, QuickActions
@@ -1087,7 +1274,7 @@ If the application makes LLM API calls at runtime:
 
 # 19. SEO, Crawl Policy, and AI Discoverability
 
-### 18.1 Default Crawl Policy (Strict No-Index)
+### 19.1 Default Crawl Policy (Strict No-Index)
 All newly deployed applications must ship with crawling and indexing **disabled** by default. This remains in effect until the project owner explicitly authorizes public indexing.
 
 **Required at launch:**
@@ -1111,7 +1298,7 @@ All newly deployed applications must ship with crawling and indexing **disabled*
 - Generate and submit `sitemap.xml` (must never include URLs with debug parameters)
 - This change must be recorded in the project changelog
 
-### 18.1.1 Debug Route Protection (Permanent)
+### 19.1.1 Debug Route Protection (Permanent)
 Debug mode URLs (any URL containing `?debug=true` or the `debug` parameter) must **never** be indexable, even after the site-wide crawl policy is lifted. This is enforced at three layers:
 
 1. **robots.txt** — `Disallow: /*?debug` must persist in all versions of the robots file
@@ -1122,7 +1309,7 @@ Debug mode URLs (any URL containing `?debug=true` or the `debug` parameter) must
 
 This protection is **permanent and non-overridable** — it is not subject to the site-wide indexing toggle.
 
-### 18.2 SEO Structure (Build Ready, Ship Disabled)
+### 19.2 SEO Structure (Build Ready, Ship Disabled)
 Even with indexing disabled, every application must be built with SEO-ready structure so it is immediately discoverable when the crawl policy is lifted.
 
 **Required on all public-facing pages:**
@@ -1136,7 +1323,7 @@ Even with indexing disabled, every application must be built with SEO-ready stru
 - `lang` attribute on `<html>` element
 - Alt text on all meaningful images
 
-### 18.3 Generative AI Discoverability
+### 19.3 Generative AI Discoverability
 Applications must be structured so generative AI systems (search-integrated LLMs, AI assistants, retrieval-augmented generation) can effectively parse and reference content when indexing is enabled.
 
 **Required:**
@@ -1151,9 +1338,9 @@ Applications must be structured so generative AI systems (search-integrated LLMs
 - Structured FAQ sections using `FAQPage` schema markup
 - Clear, self-contained introductory paragraphs on key pages (supports AI snippet extraction)
 
-### 18.4 Implementation Notes
+### 19.4 Implementation Notes
 - SEO meta tags and structured data should be managed via a shared utility or layout component (DRY — not scattered across individual pages).
-- If the application is a pure internal tool with no public-facing pages, Sections 18.2 and 18.3 may be scoped to marketing or landing pages only, as declared in the PRD.
+- If the application is a pure internal tool with no public-facing pages, Sections 19.2 and 19.3 may be scoped to marketing or landing pages only, as declared in the PRD.
 - The PRD must declare whether the application has any public-facing content routes.
 
 ---
@@ -1182,6 +1369,18 @@ A phase is done only when:
 - No undocumented assumptions remain
 - Tenant and role boundaries remain enforced (if applicable)
 - Changelog updated (if applicable)
+
+**Self-Audit Verification Loop (Mandatory):**
+Before declaring any phase complete, Claude Code must perform a self-audit:
+
+1. **Re-read the PRD's acceptance criteria** for the current phase.
+2. **Verify each acceptance criterion is implemented.** Check the actual code, not memory of what was written.
+3. **If any items are missing,** implement them before presenting results.
+4. **Self-verify a second time** after implementing the missing items.
+5. **If items are still missing after two passes,** present what's done and what remains outstanding to the project owner for guidance. Do not loop indefinitely.
+6. **Only after self-verification passes,** present the phase results and wait for human approval (per Section 1.3 Phase Gate Rule).
+
+This loop exists because phases frequently complete with items missing — especially after context compaction, where the detailed acceptance criteria from the PRD lose prominence. The self-audit forces Claude Code to re-read the source of truth (the PRD) before declaring done.
 
 ### 20.2 Mid-Build Error Recovery Protocol
 When a build step fails, Claude Code must follow this sequence:
@@ -1455,7 +1654,7 @@ Claude Code supports 12 hook events:
 The last two events (`TeammateIdle` and `TaskCompleted`) are only available when using Agent Teams. They provide automated quality gates: `TaskCompleted` hooks can validate a teammate's work against acceptance criteria and reject it if it doesn't pass, preventing premature task completion.
 
 #### 20.5.2 Hook Configuration
-Hooks are defined in `.claude/settings.json` alongside permissions and environment variables. Each hook specifies an event type, an optional matcher (regex for filtering), and a command to execute:
+Hooks are defined in `.claude/settings.json` alongside sandbox, permissions, and environment variables. The example below shows **only the hooks portion** — see Section 20.6 for the complete `settings.json` including sandbox and permission configuration. All settings go in a single file.
 
 ```json
 {
@@ -1479,6 +1678,13 @@ Hooks are defined in `.claude/settings.json` alongside permissions and environme
       "hooks": [{
         "type": "command",
         "command": "python .claude/hooks/stop.py"
+      }]
+    }],
+    "PreCompact": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "python .claude/hooks/pre_compact.py"
       }]
     }]
   }
@@ -1584,6 +1790,30 @@ if __name__ == "__main__":
     main()
 ```
 
+**`.claude/hooks/pre_compact.py` — Phase gate reminder before compaction:**
+```python
+#!/usr/bin/env python3
+"""Inject phase gate reminder before context compaction."""
+import sys, json
+
+def main():
+    event = json.loads(sys.stdin.read())
+
+    # Remind about phase gates before compaction strips the instruction
+    print(json.dumps({
+        "reminders": [
+            "PHASE GATES ARE IN EFFECT (Full Build). After completing "
+            "the current phase, STOP and wait for approval before "
+            "starting the next phase. Re-read CLAUDE.md Section 1.3 "
+            "if unsure. Self-audit against PRD acceptance criteria "
+            "before presenting results (Section 20.1)."
+        ]
+    }))
+
+if __name__ == "__main__":
+    main()
+```
+
 #### 20.5.4 Hook Security Considerations
 Hooks run locally and have full access to the filesystem. Follow these rules:
 
@@ -1603,12 +1833,110 @@ When hooks are used, the project folder structure includes:
     pre_tool_use.py   # Pre-execution guardrails
     post_tool_use.py  # Post-execution quality checks
     stop.py           # End-of-session reminders
+    pre_compact.py    # Phase gate reminder before compaction (Full Build)
   settings.json       # Hook configuration + permissions + env
 ```
 
 Hooks are optional but recommended for Full Build projects. For Express Build, the `pre_tool_use.py` guardrail (blocking destructive commands and governing document modifications) is recommended as a minimal safety layer.
 
 The project-specific `claude.md` should note which hooks are active and what they enforce. The kickoff prompt should instruct Claude Code to create hook scripts during project scaffolding if hooks are declared in the PRD.
+
+### 20.6 Sandbox and Permission Configuration
+Claude Code's permission system requires approval for most actions by default — file writes, bash commands, network requests. During a build, this means hundreds of approval prompts, leading to approval fatigue (clicking "approve" without reading) and slower builds (more context compaction due to longer sessions). The sandbox approach eliminates ~84% of these prompts by defining OS-level boundaries upfront.
+
+#### 20.6.1 Recommended Configuration: Sandbox + Auto-Allow
+The recommended approach uses OS-level sandboxing for security boundaries and auto-allow for build velocity. The project's `.claude/settings.json` should include the following (plus the `hooks` block from Section 20.5.2 — all settings go in this single file):
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "github.com",
+        "*.supabase.co",
+        "*.supabase.in"
+      ],
+      "allowLocalBinding": true
+    }
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+**How this works:**
+- `sandbox.enabled: true` + `autoAllowBashIfSandboxed: true` — OS-level isolation restricts Claude Code to the project directory and whitelisted network domains. Bash commands are auto-approved within the sandbox boundary. Claude Code physically cannot write outside the project directory or access unapproved services.
+- `permissions.defaultMode: "acceptEdits"` — File reads and writes are auto-approved. Combined with sandbox auto-allow, Claude Code can work autonomously within the sandbox boundary.
+- `network.allowedDomains` — Whitelist only the specific domains this project needs. An empty list means Claude Code cannot reach any external service. **Populate this per-project** with npm registry, GitHub, your database host, auth provider, and any API services.
+- `network.allowLocalBinding: true` — Allows the dev server to bind to localhost for local testing.
+- `deny` list — Safety floor that always blocks destructive commands regardless of sandbox state.
+
+**Defense in depth:** Three layers work together:
+1. **Sandbox** (OS-level) — Restricts filesystem and network access at the kernel level
+2. **Hooks** (project-level) — `pre_tool_use.py` blocks operations the sandbox would allow but the framework prohibits (e.g., modifying `CLAUDE.md`)
+3. **Deny list** (explicit blocks) — Always blocks `rm -rf` and `sudo` regardless of other settings
+
+#### 20.6.2 Platform Support
+- **macOS:** Sandbox works natively via the built-in Seatbelt framework. No additional installation required.
+- **Linux:** Sandbox works via bubblewrap (`bwrap`). May need to be installed: `sudo apt install bubblewrap`.
+- **WSL2:** Sandbox works — uses bubblewrap, same as Linux.
+- **WSL1:** Not supported. Bubblewrap requires kernel features only available in WSL2.
+- **Native Windows:** Not yet supported. Native Windows sandbox support is planned by Anthropic.
+
+**Fallback for native Windows (until sandbox support ships):**
+Use the explicit permission allowlist approach instead of sandbox:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Read", "Write", "Edit",
+      "Bash(npm *)", "Bash(node *)", "Bash(git *)",
+      "Bash(npx *)", "Bash(python *)", "Bash(pip *)",
+      "Bash(cd *)", "Bash(ls *)", "Bash(cat *)",
+      "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)", "Bash(sudo *)",
+      "Bash(chmod 777 *)", "Read(.env)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+This provides less isolation than the sandbox but eliminates most permission prompts for common operations. The deny list and hooks provide the safety layer.
+
+#### 20.6.3 Project vs. Personal Settings
+- **`.claude/settings.json`** — Project-level configuration. Committed to Git. Shared with all developers. Contains sandbox settings, network domains, deny lists, and hook registrations. This is a project-level decision, not a personal preference.
+- **`.claude/settings.local.json`** — Per-developer overrides. Gitignored. Use for personal preferences, additional allowed directories, or local-only configuration.
+- **`~/.claude/settings.json`** — User-level global configuration. Applies to all projects. Use for Agent Teams flag and personal defaults.
+
+Project settings take precedence over global settings. Local settings override project settings.
+
+#### 20.6.4 CLI Mode Reference
+`Shift+Tab` cycles through permission modes during a session:
+- **Normal** — Claude asks permission for most actions
+- **Accept Edits** — File reads/writes auto-approved, bash still prompts
+- **Plan Mode** — Claude plans but doesn't execute
+
+When sandbox is enabled with `autoAllowBashIfSandboxed`, the `Accept Edits` mode (via `Shift+Tab` or `defaultMode` setting) handles file operations while the sandbox handles bash commands — together they cover everything.
+
+#### 20.6.5 Interaction with Hooks
+Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation that the sandbox would otherwise allow. This is the correct design — the sandbox provides OS-level isolation, hooks provide project-level rules. Both are needed for defense in depth.
 
 ---
 
@@ -1635,6 +1963,8 @@ Before production readiness, Claude must confirm:
 - [ ] Custom subagents created in `.claude/agents/` for Full Build projects (security-reviewer, component-checker, test-coverage recommended — per Section 20.3.3)
 - [ ] Hook enforcement scripts created in `.claude/hooks/` with pre_tool_use guardrails active (per Section 20.5 — recommended for all projects, required for Full Build)
 - [ ] Hooks do not log sensitive data or make unauthorized external network calls (per Section 20.5.4)
+- [ ] `.claude/settings.json` committed with sandbox configuration and project-specific network domains (per Section 20.6 — or explicit permission allowlist if native Windows)
+- [ ] `.claude/settings.local.json` is in `.gitignore`
 - [ ] Tenant isolation proven (if applicable)
 - [ ] No recursive authorization logic
 - [ ] No unused schema artifacts
@@ -1644,6 +1974,9 @@ Before production readiness, Claude must confirm:
 - [ ] Manual isolation tests passed
 - [ ] Manual role boundary tests passed
 - [ ] Role-based test cases documented in `tests/role-tests.md` and passing (per Section 14.4)
+- [ ] Playwright end-to-end tests passing for all routes and core user journeys (per Section 14.6 — if applicable)
+- [ ] Self-audit verification loop completed — all PRD acceptance criteria verified as implemented (per Section 20.1)
+- [ ] Claude Code plugins reviewed and installed before build; installed plugins documented in `lessons-learned.md`
 - [ ] Privileged actions logged
 - [ ] No production data deleted during development or testing (per Section 12.3)
 - [ ] Debug mode toggles correctly and does not leak data when off
@@ -1653,6 +1986,11 @@ Before production readiness, Claude must confirm:
 - [ ] Environment variables documented and no hardcoded secrets
 - [ ] `.env.example` exists, is committed, and documents all required variables with grouping, descriptions, and source instructions (per Section 8.3.1)
 - [ ] `.env.example` is in sync with actual environment variable usage — no missing or stale entries
+- [ ] Setup guide exists in `docs/resources/` for every external service in the tech stack (per Section 8.8)
+- [ ] No setup guide contains actual API keys, secrets, or credentials — only placeholders
+- [ ] All setup guides have both Pre-Build and Post-Build sections completed
+- [ ] All setup guides cross-reference related guides where setup spans multiple tools
+- [ ] `docs/resources/README.md` index exists with pre-build and post-build checklists
 - [ ] Migration files match current schema state
 - [ ] No schema drift — no direct dashboard modifications to production RLS, functions, or triggers (per Section 8.7)
 - [ ] Database backup tier declared in PRD — PITR flagged as recommended for production user-facing apps (per Section 8.5)
@@ -1747,10 +2085,11 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 1.3 |
+| Version | 1.4 |
 | Status | Active |
 | Owner | <<OWNER>> |
-| Last Updated | 2026-03-06 |
+| Last Updated | 2026-03-09 |
+| Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8) with two-section structure (Pre-Build manual steps, Post-Build manual steps). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 (two-pass PRD check before declaring phase done). PreCompact hook for phase gate reminders. Pre-build scaffolding checklist with plugin review. Playwright end-to-end testing (Section 14.6) with role-based and journey-based test structure. Sandbox + auto-allow permission configuration (Section 20.6) with platform-specific guidance and Windows fallback. Expanded Freeze Audit Checklist. |
 | Changes from v1.2 | Added: `.env.example` as mandatory scaffolding artifact with grouped sections, client-safe vs server-only scope, and sync requirement. Corrected Agent Teams architecture per official docs (mailbox communication, shared task list with dependency tracking, teammate direct interaction, ~5x token cost, team-specific hooks). Added Subagents via Task Tool, Custom Subagents in `.claude/agents/`, Claude Code Hooks as automated rule enforcement with template scripts (PreToolUse guardrails, PostToolUse quality checks, Stop session reminders). Added TeammateIdle and TaskCompleted hook events for Agent Teams quality gates. |
 | Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |

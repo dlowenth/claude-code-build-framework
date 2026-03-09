@@ -115,15 +115,19 @@ If **Full Build**:
 - Component architecture and decomposition rules (Section 17.2)
 - Feature extraction protocol (Section 17.3)
 - Data safety during development and testing (never delete production data)
+- Phase gate rule (compaction-proof — must be in CLAUDE.md, not just conversation)
+- Self-audit verification loop before declaring phases complete
+- Pre-build scaffolding checklist (plugins, setup guides, hooks, agents)
 - Code hygiene rules
 - Reuse over recreation and documentation integrity
 - Mid-build error recovery protocol
 - Pre-branch checklist (for ongoing development)
 - Hook enforcement (pre_tool_use guardrails at minimum — Section 20.5)
+- Setup guide generation for all external services (Section 8.8)
 - Freeze audit checklist (trimmed to relevant items)
 - The versioning table at the end
 
-**Versioning:** Set the version to `1.3-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.3, listing the build mode selected and a summary of what was removed or simplified.
+**Versioning:** Set the version to `1.4-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.4, listing the build mode selected and a summary of what was removed or simplified.
 
 ---
 
@@ -160,16 +164,20 @@ Generate a ready-to-paste prompt for Claude Code that:
 
 **If Express Build:**
 - Tells Claude Code to produce a plan (architecture summary, data model, auth approach, screen/route list, assumptions, open questions) and **wait for approval**
-- Once approved, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval
-- After the build pass, instructs Claude Code to pause and present the freeze audit checklist results for review
+- Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The human completes the pre-build manual steps before approving the build to proceed.
+- Once approved and pre-build steps are complete, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval
+- After the build pass, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps, then pause and present the freeze audit checklist results for review
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
 - Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows → Railway/Linux cross-platform deploy)
 - Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding, with grouped sections, placeholder values, descriptions, source instructions, and client-safe vs. server-only warnings (per `claude.md` Section 8.3.1)
+- Reminds Claude Code to create `.claude/settings.json` with sandbox + auto-allow configuration and project-specific network domains during scaffolding (per `claude.md` Section 20.6). If native Windows without WSL2, use the explicit permission allowlist fallback.
 
 **If Full Build:**
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved
 - Asks Claude Code to produce the full plan output (architecture, data model, authorization, permissions, screens, calculations if applicable, phased execution plan)
+- Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The plan must identify which pre-build manual steps block which build phases.
 - Reminds Claude Code of per-phase verification gates
+- After the final build phase, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps
 
 **Agent Teams (Full Build only):**
 If the project uses Full Build mode and the plan contains phases with independent, parallelizable work (e.g., separate modules, frontend + backend + tests), the kickoff prompt should:
@@ -215,6 +223,7 @@ For Express Build, only `pre_tool_use.py` is recommended. For Full Build, all th
 
 **Both modes:**
 - Reminds Claude Code of the key constraints **that are relevant to this specific project** from `claude.md` — do not list constraints you removed. If the project includes LLM calls, remind Claude Code of: model tier selection per task, rate limit handling requirements, Python as default for batch scripts, sequential-first parallelism, and cost logging.
+- Reminds Claude Code to generate `docs/resources/` with setup guides for every external service, a `README.md` index, and to populate Pre-Build sections before the human starts manual setup. Setup guides must contain only manual steps — omit anything Claude Code automates. No actual secrets in any guide.
 - Ends with: "Confirm receipt of `claude.md` and `prd.md`, then produce the plan. Do not write code."
 
 ---
