@@ -415,6 +415,9 @@ List all environment variables the application requires. No hardcoded secrets in
 - Hook enforcement scripts should be created during project scaffolding — at minimum `pre_tool_use.py` guardrails (per `claude.md` Section 20.5)
 - Setup guides must be generated in `docs/resources/` for every external service — Pre-Build sections populated before build starts, Post-Build sections appended after scaffolding (per `claude.md` Section 8.8)
 - Claude Code must self-audit against PRD acceptance criteria before declaring any phase complete — two-pass verification loop (per `claude.md` Section 20.1)
+- `STATE.md` must be maintained as the authoritative record of build progress — updated at every phase gate (per `claude.md` Section 20.7)
+- Discuss Phase must be conducted before coding to capture implementation decisions in `CONTEXT.md` — mandatory for UI phases (per `claude.md` Section 20.8)
+- For Full Build phases with 3+ tasks, use fresh context execution via subagents to prevent context degradation (per `claude.md` Section 20.3.2.1)
 - Playwright E2E tests should be generated and run before presenting the build as complete (per `claude.md` Section 14.6 — if applicable)
 - Review and install Claude Code plugins before Phase 0 / Step 2 — at minimum evaluate `frontend-design` for UI projects
 - Additional build notes: `<<NOTES>>`
@@ -482,10 +485,12 @@ Use this structure if Build Mode is **Express Build**.
 - Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
 - **Gate:** Owner approves plan before any code is written.
 
-#### Step 1.5: Pre-Build Manual Setup
+#### Step 1.5: Pre-Build Manual Setup + Discuss Phase
 Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before proceeding.
 - Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
-- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete.
+- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) — targeted questions about how the owner envisions the implementation. Decisions recorded in `CONTEXT.md`.
+- Claude Code creates `STATE.md` with initial build state (per `claude.md` Section 20.7).
+- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete. `CONTEXT.md` captured. `STATE.md` initialized.
 
 #### Step 2: Build
 Claude Code builds the full application in one pass, following this priority order:
@@ -526,10 +531,12 @@ Use this structure if Build Mode is **Full Build**. Each phase must include file
 - Manual verification steps: `<<LIST>>`
 - Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
 
-#### Phase 0.5: Pre-Build Manual Setup
+#### Phase 0.5: Pre-Build Manual Setup + Discuss Phase
 Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before Phase 1 begins.
 - Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
-- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete.
+- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) — targeted questions about how the owner envisions the implementation. Decisions recorded in `CONTEXT.md`. Can be done once for the whole build or incrementally per phase.
+- Claude Code creates `STATE.md` with initial build state (per `claude.md` Section 20.7).
+- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete. `CONTEXT.md` captured. `STATE.md` initialized.
 
 #### Phase 1: Auth + Tenancy + RBAC
 - Scope: `<<DESCRIPTION>>`

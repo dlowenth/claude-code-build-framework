@@ -439,6 +439,7 @@ The build order depends on the declared build mode (see Section 1.5).
 | Phase | Name | Gate |
 |---|---|---|
 | Phase 0 | Architecture Lock | Plan approved, metadata complete |
+| Phase 0.5 | Pre-Build Setup + Discuss | Human completes pre-build manual steps. Implementation decisions captured in CONTEXT.md. |
 | Phase 1 | Auth + Authorization | Login works, RLS enforced, roles verified |
 | Phase 2 | Core Data Structures | Schema deployed, migrations recorded |
 | Phase 3 | Business Logic Layer | Calculation module built and verified |
@@ -463,6 +464,7 @@ Each phase must output:
 | Step | Name | Gate |
 |---|---|---|
 | Step 1 | Plan and Confirm | Owner approves architecture, data model, and screen list |
+| Step 1.5 | Pre-Build Setup + Discuss | Human completes pre-build manual steps. Implementation decisions captured in CONTEXT.md. |
 | Step 2 | Build | Full app built in one pass: auth → data → logic → API → UI |
 | Step 3 | Verify and Harden | Freeze audit checklist passed |
 
@@ -480,7 +482,9 @@ Before any application code is written, the following must be completed:
 7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
 8. **`.claude/agents/`** populated with custom subagents (Section 20.3.3, Full Build only)
 9. **Claude Code plugins reviewed and installed** — run `/plugin marketplace` and evaluate available plugins before Phase 0 / Step 2 begins. At minimum, evaluate `frontend-design` for any project with UI components. Document installed plugins in `lessons-learned.md`.
-10. **`git init`** and initial commit with scaffolding files
+10. **`STATE.md`** created in project root with initial build state (Section 20.7)
+11. **Implementation Decisions Captured** via Discuss Phase (Section 20.8) — Claude Code asks targeted questions about how the owner envisions the implementation before any code is written
+12. **`git init`** and initial commit with scaffolding files
 
 If a plugin is discovered mid-build, install it at the next phase gate and do a refinement pass rather than interrupting the current phase.
 
@@ -1140,6 +1144,9 @@ docs/
   resources/           # Setup guides for external services — see Section 8.8
     README.md          # Index of all setup guides with pre/post-build checklists
     [tool]-setup-guide.md  # One per external service
+STATE.md               # Persistent build state — see Section 20.7
+CONTEXT.md             # Implementation decisions from discuss phase — see Section 20.8
+lessons-learned.md     # Failures and fixes during build — see Section 20.2
 src/
   pages/              # Page-level components (routing, layout, data orchestration)
     Dashboard.jsx     # Composes DashboardStats, RecentActivity, QuickActions
@@ -1369,6 +1376,7 @@ A phase is done only when:
 - No undocumented assumptions remain
 - Tenant and role boundaries remain enforced (if applicable)
 - Changelog updated (if applicable)
+- `STATE.md` updated with phase completion status (Section 20.7)
 
 **Self-Audit Verification Loop (Mandatory):**
 Before declaring any phase complete, Claude Code must perform a self-audit:
@@ -1378,9 +1386,10 @@ Before declaring any phase complete, Claude Code must perform a self-audit:
 3. **If any items are missing,** implement them before presenting results.
 4. **Self-verify a second time** after implementing the missing items.
 5. **If items are still missing after two passes,** present what's done and what remains outstanding to the project owner for guidance. Do not loop indefinitely.
-6. **Only after self-verification passes,** present the phase results and wait for human approval (per Section 1.3 Phase Gate Rule).
+6. **Update `STATE.md`** with the phase result — mark the phase complete with a summary of what was delivered, or mark it as needing owner input with the outstanding items listed.
+7. **Only after self-verification passes and STATE.md is updated,** present the phase results and wait for human approval (per Section 1.3 Phase Gate Rule).
 
-This loop exists because phases frequently complete with items missing — especially after context compaction, where the detailed acceptance criteria from the PRD lose prominence. The self-audit forces Claude Code to re-read the source of truth (the PRD) before declaring done.
+This loop ensures two things: the PRD is fully implemented by the time the build completes, and `STATE.md` is always the authoritative record of where the build stands — surviving context compaction and session interruptions.
 
 ### 20.2 Mid-Build Error Recovery Protocol
 When a build step fails, Claude Code must follow this sequence:
@@ -1489,6 +1498,33 @@ Task 3 (Tests): Write role-based test cases for admin and member
 
 Run all tasks in parallel."
 ```
+
+#### 20.3.2.1 Fresh Context Execution Pattern (Recommended for Full Build)
+Context rot — the quality degradation that happens as Claude Code fills its context window — is one of the most common causes of incomplete phases, missed acceptance criteria, and declining code quality during long builds. Subagents solve this structurally.
+
+**The pattern:** Instead of building an entire phase in the lead session (where context fills up and quality degrades), break the phase into discrete implementation tasks and execute each task in a fresh subagent. The lead session stays lean — it orchestrates, tracks state, and synthesizes results. The heavy code-writing work happens in subagent contexts that start clean with a full context window.
+
+**How to structure it:**
+1. **Lead session reads `STATE.md`, `CONTEXT.md`, and the PRD** to understand what the current phase requires.
+2. **Lead session breaks the phase into implementation tasks** — each task should be small enough to execute in a single subagent context without risk of degradation (target: files for one feature or component, not an entire module).
+3. **Each task is spawned as a subagent** with a focused prompt containing: the task description, the files it should create or modify, the acceptance criteria for that specific task, and a reference to `CONTEXT.md` for implementation decisions.
+4. **Subagent executes the task** with a full, fresh context window — no accumulated context from prior tasks.
+5. **Results flow back to the lead session** as distilled summaries.
+6. **Lead session integrates results** and updates `STATE.md`.
+
+**Why this works:**
+- Each task gets 200k tokens of fresh context purely for implementation — zero accumulated garbage from prior tasks.
+- The lead session's context stays at 30-40% usage because it only handles orchestration, not implementation.
+- Quality remains consistent from the first task to the last — no degradation curve.
+- If a task fails, only that task needs to be re-executed in a fresh context, not the entire phase.
+
+**When to use fresh context execution:**
+- Full Build phases with 3+ implementation tasks
+- Any phase where the lead session's context exceeds 50% before implementation starts
+- Phases that involve both backend and frontend work (split into separate subagent tasks)
+- Long builds where you've experienced quality degradation in later phases
+
+Express Build projects can also benefit from this pattern — the single build pass can be structured as a series of subagent tasks orchestrated by the lead session, keeping the lead's context fresh for the final verification step.
 
 #### 20.3.3 Custom Subagents (Project Infrastructure)
 For larger applications, define reusable custom subagents as markdown files in `.claude/agents/` in the project root. These auto-trigger based on the work being done, enforcing framework rules without manual invocation.
@@ -1794,21 +1830,28 @@ if __name__ == "__main__":
 ```python
 #!/usr/bin/env python3
 """Inject phase gate reminder before context compaction."""
-import sys, json
+import sys, json, os
 
 def main():
     event = json.loads(sys.stdin.read())
 
-    # Remind about phase gates before compaction strips the instruction
-    print(json.dumps({
-        "reminders": [
-            "PHASE GATES ARE IN EFFECT (Full Build). After completing "
-            "the current phase, STOP and wait for approval before "
-            "starting the next phase. Re-read CLAUDE.md Section 1.3 "
-            "if unsure. Self-audit against PRD acceptance criteria "
-            "before presenting results (Section 20.1)."
-        ]
-    }))
+    reminders = [
+        "PHASE GATES ARE IN EFFECT (Full Build). After completing "
+        "the current phase, STOP and wait for approval before "
+        "starting the next phase. Re-read CLAUDE.md Section 1.3 "
+        "and STATE.md for current build position."
+    ]
+
+    # Remind to check STATE.md for current position
+    if os.path.exists("STATE.md"):
+        reminders.append(
+            "STATE.md exists — re-read it after compaction to "
+            "restore awareness of current phase, decisions, "
+            "and blockers. Also re-read CONTEXT.md for "
+            "implementation decisions."
+        )
+
+    print(json.dumps({"reminders": reminders}))
 
 if __name__ == "__main__":
     main()
@@ -1938,6 +1981,106 @@ When sandbox is enabled with `autoAllowBashIfSandboxed`, the `Accept Edits` mode
 #### 20.6.5 Interaction with Hooks
 Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation that the sandbox would otherwise allow. This is the correct design — the sandbox provides OS-level isolation, hooks provide project-level rules. Both are needed for defense in depth.
 
+### 20.7 Persistent Build State (`STATE.md`)
+Every project must maintain a `STATE.md` file in the project root that tracks the current build state. This file is the single source of truth for where the build stands — surviving context compaction, session interruptions, and terminal restarts. Claude Code must read `STATE.md` at the start of every session and after every context compaction.
+
+**Why this exists:** Phase gate instructions in conversation history are lost during context compaction. `CLAUDE.md` tells Claude Code *what the rules are*, but `STATE.md` tells it *where we are right now*. Without it, Claude Code after compaction doesn't know which phases are complete, what decisions have been made, or what's blocked.
+
+**Structure:**
+```markdown
+# Build State
+
+## Current Status
+- **Build Mode:** Full Build / Express Build
+- **Current Phase:** Phase <<N>> — <<NAME>>
+- **Phase Status:** Not Started / In Progress / Awaiting Approval / Complete
+- **Context Health:** <<percentage if known>>
+
+## Phase History
+| Phase | Status | Summary | Approved |
+|---|---|---|---|
+| Phase 0 | Complete | Architecture locked, plan approved | Yes — <<date>> |
+| Phase 1 | Complete | Auth + RLS working, roles verified | Yes — <<date>> |
+| Phase 2 | In Progress | Schema deployed, 3/5 entities complete | Pending |
+
+## Key Decisions
+- <<Decision made during discuss phase or build>>
+- <<Decision made during discuss phase or build>>
+
+## Blockers
+- <<Anything blocking progress>>
+
+## Implementation Decisions (from CONTEXT.md)
+- <<Key UX/design decisions captured during discuss phase>>
+
+## Notes for Next Session
+- <<Anything Claude Code should know when resuming>>
+```
+
+**Update rules:**
+- **Created** during pre-build scaffolding with initial state (build mode, phase 0 status).
+- **Updated** at every phase gate — when a phase is marked complete, when awaiting approval, when a new phase starts.
+- **Updated** when key decisions are made during the build.
+- **Updated** when blockers are identified or resolved.
+- **Read** by Claude Code at session start, after compaction, and before any phase transition.
+- Claude Code may update `STATE.md` without explicit owner approval — this is an operational file, not a governing document. It is the exception alongside `lessons-learned.md` (see Section 22.5).
+
+### 20.8 Discuss Phase — Implementation Decision Capture
+Before building a phase, Claude Code must conduct a focused discussion with the project owner to capture implementation decisions that go beyond what the PRD specifies. The PRD defines *what* to build; the discuss phase captures *how* the owner envisions it.
+
+**Why this exists:** The most common source of post-build disappointment is not missing features — it's features built differently than the owner imagined. The PRD says "user management page" but doesn't specify whether it's a table or a card layout, whether filters are inline or in a sidebar, what the empty state looks like, or how bulk actions work. Without this discussion, Claude Code fills in every ambiguity with reasonable defaults that may not match the owner's vision.
+
+**When it happens:** After the plan is approved and pre-build setup is complete, but before any code is written. For Full Build, this happens once before Phase 1 (or before each phase if the owner prefers incremental discussion). For Express Build, it happens once before Step 2.
+
+**What Claude Code asks about (based on what the phase is building):**
+
+| If the phase includes... | Ask about... |
+|---|---|
+| UI pages or screens | Layout style, information density, navigation patterns, empty states, responsive behavior, key interactions |
+| Forms or data entry | Field grouping, validation display, multi-step vs. single page, required vs. optional visual treatment |
+| Tables or list views | Column priorities, sort defaults, filter approach, pagination vs. infinite scroll, row actions |
+| Admin features | Bulk actions, search/filter power, audit visibility, permission display |
+| APIs or integrations | Response format preferences, error display to users, loading state behavior |
+| Dashboards | Key metrics priority, chart types, time range defaults, drill-down behavior |
+
+**How it works:**
+1. Claude Code analyzes the current phase's scope from the PRD.
+2. For each area that has implementation ambiguity, Claude Code asks targeted questions.
+3. The owner answers — providing as much or as little detail as they want. Skipped questions get reasonable defaults.
+4. Claude Code writes the decisions to `CONTEXT.md` in the project root.
+5. `CONTEXT.md` is read by Claude Code (and by subagents) during implementation, so decisions are consistently applied across all tasks.
+6. Key decisions are also summarized in `STATE.md` for persistence across sessions.
+
+**`CONTEXT.md` structure:**
+```markdown
+# Implementation Decisions
+
+## Phase <<N>>: <<Phase Name>>
+
+### UI and Layout
+- <<Decision: e.g., "Card layout for user list, not table">>
+- <<Decision: e.g., "Sidebar filters that collapse on mobile">>
+
+### Interactions
+- <<Decision: e.g., "Inline editing for quick fields, modal for complex edits">>
+- <<Decision: e.g., "Optimistic updates with rollback on failure">>
+
+### Empty and Error States
+- <<Decision: e.g., "Illustrated empty states with action prompts, not just text">>
+
+### Design Direction
+- <<Decision: e.g., "Clean and professional, not playful. Minimal color accents.">>
+
+### Other
+- <<Decision>>
+```
+
+**Rules:**
+- The discuss phase is mandatory for any phase that includes UI implementation. It is recommended but optional for pure backend phases.
+- Claude Code must not skip this step even if the PRD seems detailed. The PRD describes features; the discuss phase describes experience.
+- `CONTEXT.md` is cumulative — each phase's decisions are appended, not overwritten.
+- Subagents executing tasks must be given `CONTEXT.md` in their spawn prompt so implementation decisions are consistently applied.
+
 ---
 
 # 21. Freeze Audit Checklist
@@ -1976,6 +2119,8 @@ Before production readiness, Claude must confirm:
 - [ ] Role-based test cases documented in `tests/role-tests.md` and passing (per Section 14.4)
 - [ ] Playwright end-to-end tests passing for all routes and core user journeys (per Section 14.6 — if applicable)
 - [ ] Self-audit verification loop completed — all PRD acceptance criteria verified as implemented (per Section 20.1)
+- [ ] `STATE.md` exists and reflects all phases as complete with approval dates (per Section 20.7)
+- [ ] `CONTEXT.md` exists with implementation decisions captured for all UI phases (per Section 20.8)
 - [ ] Claude Code plugins reviewed and installed before build; installed plugins documented in `lessons-learned.md`
 - [ ] Privileged actions logged
 - [ ] No production data deleted during development or testing (per Section 12.3)
@@ -2050,7 +2195,10 @@ Claude must not:
 Before creating a new utility, helper, component, or script, Claude must check whether one already exists in the project. Search the codebase for similar functionality. If a suitable implementation exists, use or extend it. Do not build parallel implementations of the same logic. This applies to auth helpers, API wrappers, UI components, data transformation utilities, and any shared code. Combined with the DRY requirement in Section 6 and the Feature Extraction Protocol in Section 17.3, this prevents the codebase from accumulating redundant implementations that diverge over time. When a feature is requested for a second page, always extract-then-share per Section 17.3 — never rebuild.
 
 ## 22.5 Documentation Integrity
-Do not modify `CLAUDE.md`, `prd.md`, or any workflow/documentation file without explicit approval from the project owner. These files are governing artifacts, not living notes. If a documentation update is warranted by a discovery during the build, propose the change and wait for approval. The only exception is appending to `lessons-learned.md` in the project root, which is designed for in-build documentation of failures and fixes (see Section 20.2).
+Do not modify `CLAUDE.md`, `prd.md`, or any workflow/documentation file without explicit approval from the project owner. These files are governing artifacts, not living notes. If a documentation update is warranted by a discovery during the build, propose the change and wait for approval. The exceptions are:
+- `lessons-learned.md` — Append-only documentation of failures and fixes (see Section 20.2)
+- `STATE.md` — Operational build state tracking, updated at every phase transition (see Section 20.7)
+- `CONTEXT.md` — Implementation decisions, written during the discuss phase and referenced during build (see Section 20.8)
 
 ## 22.6 Stop and Ask Triggers
 Claude must pause and request clarification when encountering ambiguity around:
@@ -2089,7 +2237,7 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
-| Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8) with two-section structure (Pre-Build manual steps, Post-Build manual steps). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 (two-pass PRD check before declaring phase done). PreCompact hook for phase gate reminders. Pre-build scaffolding checklist with plugin review. Playwright end-to-end testing (Section 14.6) with role-based and journey-based test structure. Sandbox + auto-allow permission configuration (Section 20.6) with platform-specific guidance and Windows fallback. Expanded Freeze Audit Checklist. |
+| Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7) — single source of truth for build progress surviving compaction and session interruptions. Discuss Phase via CONTEXT.md (Section 20.8) — implementation decision capture before coding to close the gap between PRD features and owner's vision. Fresh Context Execution Pattern (Section 20.3.2.1) — subagent-based task execution to prevent context degradation during long builds. Expanded Freeze Audit Checklist. |
 | Changes from v1.2 | Added: `.env.example` as mandatory scaffolding artifact with grouped sections, client-safe vs server-only scope, and sync requirement. Corrected Agent Teams architecture per official docs (mailbox communication, shared task list with dependency tracking, teammate direct interaction, ~5x token cost, team-specific hooks). Added Subagents via Task Tool, Custom Subagents in `.claude/agents/`, Claude Code Hooks as automated rule enforcement with template scripts (PreToolUse guardrails, PostToolUse quality checks, Stop session reminders). Added TeammateIdle and TaskCompleted hook events for Agent Teams quality gates. |
 | Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |

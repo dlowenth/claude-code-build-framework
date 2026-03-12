@@ -117,6 +117,8 @@ If **Full Build**:
 - Data safety during development and testing (never delete production data)
 - Phase gate rule (compaction-proof — must be in CLAUDE.md, not just conversation)
 - Self-audit verification loop before declaring phases complete
+- `STATE.md` persistent build state (Section 20.7)
+- Discuss Phase for implementation decisions before coding (Section 20.8)
 - Pre-build scaffolding checklist (plugins, setup guides, hooks, agents)
 - Code hygiene rules
 - Reuse over recreation and documentation integrity
@@ -165,8 +167,9 @@ Generate a ready-to-paste prompt for Claude Code that:
 **If Express Build:**
 - Tells Claude Code to produce a plan (architecture summary, data model, auth approach, screen/route list, assumptions, open questions) and **wait for approval**
 - Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The human completes the pre-build manual steps before approving the build to proceed.
-- Once approved and pre-build steps are complete, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval
-- After the build pass, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps, then pause and present the freeze audit checklist results for review
+- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7) and conduct the Discuss Phase to capture implementation decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for any project with UI.
+- Once approved, pre-build steps complete, and implementation decisions captured, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval. For larger Express builds, recommend using fresh context execution via subagents (per `claude.md` Section 20.3.2.1) to prevent context degradation.
+- After the build pass, instructs Claude Code to update `STATE.md`, append Post-Build sections to each setup guide with any remaining manual steps, then pause and present the freeze audit checklist results for review
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
 - Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows → Railway/Linux cross-platform deploy)
 - Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding, with grouped sections, placeholder values, descriptions, source instructions, and client-safe vs. server-only warnings (per `claude.md` Section 8.3.1)
@@ -176,7 +179,9 @@ Generate a ready-to-paste prompt for Claude Code that:
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved
 - Asks Claude Code to produce the full plan output (architecture, data model, authorization, permissions, screens, calculations if applicable, phased execution plan)
 - Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The plan must identify which pre-build manual steps block which build phases.
-- Reminds Claude Code of per-phase verification gates
+- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7) and conduct the Discuss Phase to capture implementation decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for phases with UI, recommended for all phases.
+- Reminds Claude Code of per-phase verification gates and that `STATE.md` must be updated at every phase transition
+- Instructs Claude Code to use fresh context execution via subagents for phases with 3+ implementation tasks (per `claude.md` Section 20.3.2.1)
 - After the final build phase, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps
 
 **Agent Teams (Full Build only):**
