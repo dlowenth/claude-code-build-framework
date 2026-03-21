@@ -119,6 +119,7 @@ If **Full Build**:
 - Self-audit verification loop before declaring phases complete
 - `STATE.md` persistent build state (Section 20.7)
 - Discuss Phase for implementation decisions before coding (Section 20.8)
+- Superpowers plugin integration (Section 20.9)
 - Pre-build scaffolding checklist (plugins, setup guides, hooks, agents)
 - Code hygiene rules
 - Reuse over recreation and documentation integrity
@@ -129,7 +130,7 @@ If **Full Build**:
 - Freeze audit checklist (trimmed to relevant items)
 - The versioning table at the end
 
-**Versioning:** Set the version to `1.4-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.4, listing the build mode selected and a summary of what was removed or simplified.
+**Versioning:** Set the version to `1.5-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.5, listing the build mode selected and a summary of what was removed or simplified.
 
 ---
 
@@ -167,21 +168,23 @@ Generate a ready-to-paste prompt for Claude Code that:
 **If Express Build:**
 - Tells Claude Code to produce a plan (architecture summary, data model, auth approach, screen/route list, assumptions, open questions) and **wait for approval**
 - Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The human completes the pre-build manual steps before approving the build to proceed.
-- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7) and conduct the Discuss Phase to capture implementation decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for any project with UI.
+- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7), run Superpowers brainstorming for general design exploration and spec validation (per `claude.md` Section 20.9), then conduct the Discuss Phase as a supplemental UI/UX pass to capture GUI and user journey decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for any project with UI.
 - Once approved, pre-build steps complete, and implementation decisions captured, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval. For larger Express builds, recommend using fresh context execution via subagents (per `claude.md` Section 20.3.2.1) to prevent context degradation.
+- **Reminds Claude Code of the pre-build hard gate:** before starting the build, Claude Code must present the Pre-Build checklist from `docs/resources/README.md`, ask the human to confirm each item is complete, and verify `.env` contains values for every variable in `.env.example`. Do not start coding until the human confirms.
 - After the build pass, instructs Claude Code to update `STATE.md`, append Post-Build sections to each setup guide with any remaining manual steps, then pause and present the freeze audit checklist results for review
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
 - Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows → Railway/Linux cross-platform deploy)
 - Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding, with grouped sections, placeholder values, descriptions, source instructions, and client-safe vs. server-only warnings (per `claude.md` Section 8.3.1)
-- Reminds Claude Code to create `.claude/settings.json` with sandbox + auto-allow configuration and project-specific network domains during scaffolding (per `claude.md` Section 20.6). If native Windows without WSL2, use the explicit permission allowlist fallback.
+- Reminds Claude Code to create `.claude/settings.json` with bypass permissions and hooks enforcement during scaffolding (per `claude.md` Section 20.6).
 
 **If Full Build:**
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved
 - Asks Claude Code to produce the full plan output (architecture, data model, authorization, permissions, screens, calculations if applicable, phased execution plan)
 - Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The plan must identify which pre-build manual steps block which build phases.
-- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7) and conduct the Discuss Phase to capture implementation decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for phases with UI, recommended for all phases.
+- **Reminds Claude Code of the pre-build hard gate:** before starting Phase 1, Claude Code must present the Pre-Build checklist from `docs/resources/README.md`, ask the human to confirm each item is complete, and verify `.env` contains values for every variable in `.env.example`. Do not start coding until the human confirms.
+- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7), run Superpowers brainstorming for general design exploration and spec validation (per `claude.md` Section 20.9), then conduct the Discuss Phase as a supplemental UI/UX pass to capture GUI and user journey decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for phases with UI, recommended for all phases.
 - Reminds Claude Code of per-phase verification gates and that `STATE.md` must be updated at every phase transition
-- Instructs Claude Code to use fresh context execution via subagents for phases with 3+ implementation tasks (per `claude.md` Section 20.3.2.1)
+- Instructs Claude Code to use Superpowers' subagent-driven-development for task execution with two-stage review (spec compliance then code quality) per `claude.md` Section 20.9, combined with fresh context execution via subagents for phases with 3+ implementation tasks (per `claude.md` Section 20.3.2.1)
 - After the final build phase, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps
 
 **Agent Teams (Full Build only):**
@@ -245,6 +248,22 @@ A standalone file listing:
 - Suggested answers where you have a strong recommendation, marked as `[SUGGESTED]`
 
 Group these by category: Build Mode, Architecture, Auth Provider, Roles/Permissions, Data Model, Business Logic, Integrations, Observability, UX, Claude.md Customization, Other.
+
+---
+
+## Open Questions Resolution Phase (Mandatory Before Handoff to Claude Code)
+
+After delivering the four files, **you must walk me through every open question interactively before I take these files to Claude Code.** Do not let me proceed without resolving them. This is a hard gate.
+
+**Process:**
+1. Present each open question one at a time (or in small related groups), starting with the highest-impact items (Architecture, Auth, Data Model) before lower-impact items (UX, Observability).
+2. For `[SUGGESTED]` items, present your recommendation and ask me to confirm or override.
+3. For `[INFERRED]` items, explain what you assumed and why, and ask me to confirm or correct.
+4. For unresolved gaps, ask me directly. If I don't have an answer, we must either agree on a reasonable default or flag it as a known risk with a documented fallback.
+5. After all questions are resolved, **update all four deliverable files** to reflect the resolutions. Remove the open questions from `open-questions.md` and replace them with a "Resolved Decisions" log showing what was decided. Update the PRD sections and project-specific `claude.md` with any changes.
+6. Re-deliver the updated files. The final handoff to Claude Code must include **zero unresolved open questions** in the PRD's Section 17 and zero unresolved items in `open-questions.md`.
+
+**Why this matters:** Unresolved open questions become assumption drift in Claude Code. Claude Code will silently make decisions about unresolved items, and those decisions may be wrong. Every question resolved here saves hours of rework during the build.
 
 ---
 

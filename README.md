@@ -1,216 +1,189 @@
-# AI-Assisted Application Build System
-## A Framework for Building Production-Quality Software with Claude Code
+# Claude Code Build Framework
+## Build Production-Quality Software with AI — From Idea to Deployed Application
+
+A governance framework that transforms rough ideas into structured, production-ready applications built by [Claude Code](https://code.claude.com). It enforces security, quality, and best practices at every step while integrating best-in-class open source tools to handle the development workflow.
 
 ---
 
-## What Is This?
+## Why This Exists
 
-This is a three-file system that turns a rough idea — a voice transcript, a set of notes, a conversation — into a structured, production-ready application built by Claude Code. It enforces security, consistency, and best practices across every build, while capturing lessons learned so the same mistakes never happen twice.
+AI coding agents are fast but undisciplined. Left to their defaults, they make silent assumptions, skip security steps, build UI before the backend is secure, and produce code that works in a demo but breaks in production. Worse, they forget what they were doing halfway through a long build as their context window fills up.
 
-Think of it as a build contract, a project spec, and a launch checklist, all wired together so an AI coding agent can execute with discipline instead of guessing.
+This framework solves that by separating **what gets built** (your product spec) from **how it gets built** (the build contract) and **who does what** (the human decides, the AI executes). The human's only job during execution is decision-making — approving plans, resolving questions, confirming setup. The AI handles everything else autonomously, including overnight builds with no human present.
 
 ---
 
-## The Problem It Solves
+## How It's Different from Other Approaches
 
-When you use an AI coding agent to build an application, the default experience is fast but chaotic. The agent makes assumptions, skips security steps, builds the UI before the backend is secure, introduces dependencies you didn't ask for, and produces code that works in a demo but breaks in production.
+Most AI coding workflows fall into one of two camps: **vibe coding** (just tell the AI what to build and hope for the best) or **process frameworks** (structured workflows for how the AI should brainstorm, plan, and execute). This framework is neither — it's a **governing build contract** that works alongside process frameworks.
 
-This system fixes that by:
+### What We Integrate (and Why)
 
-- **Forcing a plan before any code is written.** The agent must produce an architecture plan and get approval before writing a single line.
-- **Encoding hard-won lessons into the build contract.** Every bug you fight gets documented so the next project starts with that knowledge baked in.
-- **Scaling the process to project complexity.** Simple tools get built in one shot. Complex multi-tenant platforms get phased execution with verification gates.
-- **Keeping security as the top priority.** Authorization, data isolation, error handling, and deployment safety are enforced structurally, not left to the agent's judgment.
+This framework stands on the shoulders of two excellent open source tools:
+
+**[Superpowers](https://github.com/obra/superpowers)** by Jesse Vincent (100k+ stars) — The best development process framework for AI coding agents. Superpowers handles *how* code gets built: structured brainstorming that produces formal design specs, implementation planning with bite-sized tasks, subagent-driven execution where every task is reviewed twice (once for spec compliance, once for code quality), and verification-before-completion that requires real output evidence before claiming work is done. It's battle-tested across thousands of developers.
+
+**[Context7](https://github.com/upstash/context7)** by Upstash — A documentation MCP server that gives Claude Code access to real-time, version-specific library documentation. Instead of hallucinating outdated Supabase methods or React patterns from stale training data, Claude Code pulls current docs from source repositories. This prevents an entire class of bugs that come from AI coding with outdated knowledge.
+
+**[Frontend Design](https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design)** by Anthropic (277k+ installs) — The official skill for breaking Claude Code out of generic "AI slop" aesthetics. It auto-activates during UI work and pushes toward distinctive typography, purposeful color palettes, and atmospheric depth. Before writing any frontend code, Claude Code thinks through purpose, tone, constraints, and what makes this interface memorable instead of forgettable.
+
+### What This Framework Adds on Top
+
+Superpowers and Context7 are excellent at *development process* and *knowledge access*. They don't cover:
+
+- **Security architecture** — RLS policies, auth patterns, JWT handling, data isolation, permission enforcement at the data layer. This framework encodes dozens of specific, tested patterns for Supabase + Discord OAuth (and Clerk) that prevent common auth failures.
+- **Production readiness** — A 69-item freeze audit checklist, setup guide generation for every third-party service, deployment discipline (tagged commits, schema drift prevention, PITR backup), observability requirements, and environment variable management.
+- **Stack-specific lessons learned** — Every bug fought across real builds gets encoded as a mandatory rule with the exact code pattern to follow. The `getSession()` vs `getUser()` deadlock. The two-effect auth initialization pattern. The `.npmrc` fix for Windows-to-Railway deployment. These are the lessons that save you hours of debugging.
+- **Hard gates that prevent skipping steps** — Open questions must be resolved before handoff. Pre-build setup must be confirmed complete before coding starts. Claude Code verifies `.env` against `.env.example`. These gates exist because without them, critical steps get forgotten (we learned this the hard way).
+- **Build state persistence** — `STATE.md` tracks which phases are complete, what decisions were made, and what's blocked. This survives context compaction and session restarts, so Claude Code always knows where the build stands.
+
+**The integration model:** Superpowers handles development process. Context7 handles documentation access. Frontend Design handles visual quality. This framework handles architecture, security, production readiness, and the governing rules. When they conflict, the build contract wins — Superpowers explicitly defers to `CLAUDE.md`.
 
 ---
 
 ## The Three Files
 
-### 1. `claude.md` — The Build Contract
-
-This is the master document that governs how every application gets built. It's not a project spec — it's the rules of engagement. It covers:
-
-- **Core principles:** Plan before code. Security over speed. No silent changes. Deterministic scripts over probabilistic AI for any task with predictable output — because every additional AI reasoning step compounds error rates.
-- **Default technology stack:** React, Supabase, Discord OAuth, Railway deployment. Your stack defaults are declared once here; individual projects only need to note deviations.
-- **Authentication and authorization:** Detailed rules for RLS policies, helper functions, permission matrices, and — critically — a library of specific Supabase + Discord OAuth patterns that prevent common first-login failures, session deadlocks, and policy evaluation errors. Clerk is supported as an alternative auth provider for applications needing subscription billing, consumer sign-up flows, or GDPR compliance — with full Supabase RLS integration patterns documented.
-- **Build order:** Either a full 8-phase build with verification gates at each step, or a 3-step express build for simpler projects. The agent can't build UI before the backend is secured.
-- **Component architecture:** Mandatory decomposition rules that keep pages lean (layout and orchestration only, ~200 line soft ceiling) and require features to be built as components from the start. A strict extract-then-share protocol prevents feature duplication across pages.
-- **Mid-build error recovery:** A defined protocol for what Claude Code does when something breaks — read the full error, classify it, fix and verify, check before running paid API calls, and document the failure in a `lessons-learned.md` file so you have a record to fold back into the master build contract after each project.
-- **Error handling and debug mode:** A URL-toggled debug mode (`?debug=true`) that writes verbose logs to the console for troubleshooting but ships silent in production. Users see subtle error notifications, never stack traces.
-- **Production observability:** Requirements for error tracking, analytics, feature adoption tracking, and session replay — scaled to the application's user base. Every new feature must include tracking events. Error tracking must be configured before the first production deploy.
-- **Testing:** Role-based test cases maintained as a living document in the repository, with browser verification for UI, console, and network behavior. Playwright end-to-end tests cover page loads, role-based access, and core user journeys — Claude Code runs them and fixes failures before presenting results. A strict rule against deleting production data during development or testing.
-- **Self-healing build process:** Phase gate instructions survive context compaction (embedded in `CLAUDE.md`, not just conversation). A self-audit verification loop requires Claude Code to re-read the PRD and verify every acceptance criterion is implemented before declaring any phase complete. A `PreCompact` hook reinforces phase gates before context is compressed. `STATE.md` tracks the authoritative build state — which phases are complete, what decisions were made, what's blocked — surviving compaction and session restarts.
-- **Implementation decision capture:** A mandatory "discuss phase" before coding where Claude Code asks targeted questions about how you envision the implementation — layout choices, interaction patterns, empty states, design direction. Decisions are recorded in `CONTEXT.md` and consistently applied by all subagents. This closes the gap between "feature exists" and "feature looks and works the way I imagined."
-- **Fresh context execution:** For longer builds, implementation tasks are delegated to subagents with fresh context windows — each starting clean with the full 200k token window. The lead session stays lean for orchestration while heavy code-writing happens without context degradation. Quality stays consistent from first task to last.
-- **Deployment discipline:** Database backup/PITR requirements, Edge Function deployment from tagged commits only, schema drift prevention (no direct dashboard modifications), and a pre-branch checklist for ongoing development work.
-- **Setup guide generation:** Every external service in the tech stack gets a setup guide in `docs/resources/` documenting only the manual steps the human needs to perform — split into pre-build (before Claude Code starts) and post-build (after scaffolding completes). Anything Claude Code automates is omitted. No actual secrets ever appear in guides.
-- **Deployment:** Environment variables, Git requirements, Railway configuration, and a cross-platform build fix for Windows-to-Linux deployment.
-- **LLM usage:** When to use an AI model vs. a Python script, which model tier to use for which task, rate limit handling, batch processing architecture, and cost tracking.
-- **SEO and crawl policy:** Applications ship with indexing disabled by default. SEO structure is built in so it's ready when you flip the switch. Debug routes are permanently excluded from indexing.
-- **Agent Teams:** Rules for when and how to use Claude Code's multi-agent feature for parallel execution on complex builds.
-- **Parallel execution:** Two levels of parallelism — Agent Teams for phase-level work (splitting entire phases across teammates) and subagents via the Task tool for task-level work within a phase (spawning lightweight parallel tasks). Custom subagent definitions in `.claude/agents/` auto-trigger security review, component architecture checks, and test coverage verification as code is being written.
-- **Automated rule enforcement via hooks:** Claude Code hooks auto-trigger Python scripts on 12 lifecycle events (before tool use, after tool use, session start/stop, subagent spawn, etc.). Template hook scripts block destructive commands, protect governing documents from unauthorized modification, warn when files exceed size thresholds, and remind about documentation updates at session end. Unlike advisory subagents, hooks can actually block actions before they execute.
-- **Sandbox and permission configuration:** OS-level sandboxing restricts Claude Code to the project directory and whitelisted network domains, eliminating ~84% of permission prompts while maintaining security. Hooks provide a second layer of project-level rules on top of the sandbox. Full platform support documented with a fallback path for native Windows.
-- **A freeze audit checklist:** A comprehensive list of items that must pass before any application ships.
-
-The build contract is a living document. Every time a build uncovers a new failure pattern — a Supabase auth quirk, a React render loop, a Railway deployment issue — the fix gets added to the contract so every future project starts with that knowledge.
-
-### 2. `prd-template.md` — The Project Spec Template
-
-This is a blank PRD (Product Requirements Document) structure that gets filled in for each new project. It's designed to pair with the build contract and covers:
-
-- **Product purpose and positioning:** What you're building, what you're not, and why it matters.
-- **Users, roles, and permissions:** Personas, role definitions, and a required permissions matrix.
-- **User journeys:** Narrative flows for key workflows.
-- **Architecture:** Tenancy model, frontend/backend stack, auth method, deployment targets.
-- **Data model:** Entity definitions with fields, types, relationships, indexes, and security notes.
-- **Business logic:** Calculation definitions with DRY requirements — one source of truth for all math.
-- **LLM usage:** If the app makes AI calls at runtime, a task inventory with model tiers, expected volume, rate limits, and cost controls.
-- **Milestones:** Either a 3-step express plan or a full phased execution plan with acceptance criteria per phase.
-- **Edge Function deployment manifest:** Documents the JWT verification flag for each function.
-- **Auth initialization pattern:** The mandatory two-effect pattern for Supabase auth.
-
-The template includes all the security acceptance tests and implementation notes that reference back to the build contract, so nothing falls through the cracks.
-
-### 3. `kickoff-prompt-template.md` — The Automation Prompt
-
-This is the prompt you paste into a new Claude chat to generate project files from raw context. You provide a transcript or notes about what you want to build, and it produces four deliverables:
-
-1. **Project-specific `claude.md`** — A trimmed version of the master build contract with only the sections relevant to this project. A simple single-tenant app with no Supabase won't carry 24 sections of multi-tenant RLS strategy.
-2. **Completed `prd.md`** — The PRD template filled in from your transcript, with inferences marked for your review.
-3. **`kickoff-prompt.md`** — A ready-to-paste prompt for Claude Code that instructs it to read the build contract and PRD, then produce a plan for approval.
-4. **`open-questions.md`** — Every gap, inference, and decision for you to review before the build starts.
-
-The prompt also detects project complexity and recommends either Express Build (simple apps, one-shot execution) or Full Build (complex apps, phased with verification gates).
-
----
-
-## How the Workflow Works
-
-### Step 1: Describe What You Want to Build
-Record a voice note, write out your idea, paste a transcript — any format. This is your raw project context.
-
-### Step 2: Generate Project Files
-Open a new Claude chat. Paste the kickoff prompt template. Attach the master `claude.md` and the `prd-template.md`. Paste your project context at the bottom. Send it.
-
-Claude assesses complexity, selects a build mode, and produces four files: a project-specific build contract, a completed PRD, a Claude Code kickoff prompt, and an open questions summary.
-
-### Step 3: Review and Iterate
-Read the open questions file first. Confirm or override inferences. Answer gaps. Verify the build mode selection and architecture decisions. Ask Claude to revise until the PRD and build contract are solid.
-
-### Step 4: Start the Build
-Open your project folder. Place the project-specific `CLAUDE.md` (uppercase) and `prd.md` in the root. Initialize Git. Start Claude Code (terminal or desktop app). Paste the kickoff prompt.
-
-Claude Code reads both files, produces an architecture plan, and waits for your approval before writing any code.
-
-### Step 5: Execute
-For Express Build: approve the plan, Claude Code builds the full app in one pass, then presents the freeze audit checklist for review.
-
-For Full Build: approve the plan, then execute phase by phase. Each phase produces deliverables, acceptance criteria, and verification steps. You approve each phase before the next begins. Agent Teams can parallelize independent workstreams.
-
-### Step 6: Ship
-The freeze audit checklist must pass before production deployment. Every item on the checklist has been earned through real build experience.
-
----
-
-## What Makes This Different
-
-### It Learns From Every Build
-The build contract isn't static. Every time a build uncovers a new class of bug — an auth deadlock, a render loop, a deployment platform quirk — the fix gets encoded as a mandatory rule with the exact code pattern to follow. The next project starts with that knowledge built in.
-
-During each build, Claude Code writes failures and fixes to a `lessons-learned.md` file in the project root. After the build ships, you review that file and fold any systemic lessons back into the master build contract. The system gets smarter with every project — not just for you, but for everyone using the same build contract.
-
-### It Scales to Complexity
-A simple internal tool doesn't carry the overhead of a multi-tenant SaaS platform. The system detects complexity and strips irrelevant sections so the AI agent only reads what matters for this specific build.
-
-### It Prevents, Not Just Fixes
-Most of the rules in the build contract are preventive. The `.npmrc` file gets created before the first `npm install`, not after a failed Railway deploy. The auth initialization pattern is required from Phase 1, not discovered after a deadlocked login screen. The debug mode is designed into the architecture, not bolted on during troubleshooting.
-
-### Security Is Structural
-Authorization isn't a suggestion — it's enforced at the data layer, verified at each phase, and audited before ship. The build contract encodes specific, tested patterns for RLS policies, JWT handling, session management, and error exposure.
-
----
-
-## Prerequisites
-
-- **Claude subscription** (Pro, Max, Team, or Enterprise) for Claude Code access
-- **Git + GitHub** for version control
-- **Node.js** for React projects
-- **Supabase account** (if using Supabase as backend)
-- **Railway account** (if using Railway for deployment)
-- **Discord application** (if using Discord OAuth)
-
-### Claude Code Setup (One-Time)
-
-Create or update `~/.claude/settings.json` (Mac/Linux) or `%USERPROFILE%\.claude\settings.json` (Windows):
-
-```json
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
-  "permissions": {
-    "allow": [
-      "Read",
-      "Write",
-      "Edit",
-      "Bash(npm *)",
-      "Bash(node *)",
-      "Bash(git *)",
-      "Bash(npx *)",
-      "Bash(python *)",
-      "Bash(pip *)",
-      "Bash(cd *)",
-      "Bash(ls *)",
-      "Bash(cat *)",
-      "Bash(mkdir *)",
-      "Bash(cp *)",
-      "Bash(mv *)"
-    ],
-    "deny": [
-      "Bash(rm -rf /*)",
-      "Bash(sudo *)",
-      "Bash(chmod 777 *)",
-      "Read(.env)"
-    ]
-  }
-}
-```
-
----
-
-## Adapting This for Your Own Stack
-
-The system ships with defaults for React + Supabase + Discord OAuth + Railway, but it's designed to be adapted:
-
-- **Different backend?** Replace the Supabase-specific sections (RLS, Edge Functions, auth patterns) with equivalents for your stack. Keep the structural principles (authorization at data layer, no client trust, migration files).
-- **Different auth provider?** Replace Discord OAuth references. The auth initialization pattern (two-effect, no async in callbacks) may still apply depending on your auth library.
-- **Different deployment target?** Replace Railway references. The cross-platform `.npmrc` fix is Railway-specific; your platform may have its own quirks to document.
-- **Different frontend?** Replace React-specific sections (render stability rules, context patterns). The principles (stable references, no render loops) apply to any reactive framework.
-
-The key value isn't the specific technology choices — it's the system of encoding lessons learned into a build contract that prevents repeat failures and gives an AI coding agent the structure it needs to build with discipline.
-
----
-
-## Quick Reference
-
 | File | Purpose | When to Edit |
 |---|---|---|
-| `claude.md` (master) | Governing build contract for all projects | When a build uncovers a new lesson learned |
-| `prd-template.md` | Blank PRD structure | When you want to add new standard sections |
-| `kickoff-prompt-template.md` | Automation prompt for generating project files | When you change the deliverable structure |
-
-| Deliverable | Produced By | Used In |
-|---|---|---|
-| Project-specific `claude.md` | Kickoff prompt → Claude | Claude Code (as `CLAUDE.md` in project root) |
-| Completed `prd.md` | Kickoff prompt → Claude | Claude Code (in project root) |
-| `kickoff-prompt.md` | Kickoff prompt → Claude | Pasted into Claude Code as first message |
-| `open-questions.md` | Kickoff prompt → Claude | Your review before build starts |
+| `claude.md` | Master build contract — the rules for every project | After each build, when lessons learned are folded back in |
+| `prd-template.md` | Blank PRD (Product Requirements Document) template | When you want to add new standard sections |
+| `kickoff-prompt-template.md` | Prompt that generates project files from raw context | When you change the deliverable structure or workflow |
 
 ---
 
-## License and Attribution
+## Step-by-Step: Your First Build
 
-This framework was developed through iterative real-world application builds, with each lesson learned encoded back into the system. You are free to use, adapt, and modify these files for your own projects.
+### Prerequisites
 
-If you find it useful, consider contributing your own lessons learned back to the community.
+- **Claude Pro, Max, Team, or Enterprise subscription** (for Claude Code access)
+- **Claude Code installed** — [Install instructions](https://code.claude.com)
+- **Git + GitHub** for version control
+- **Node.js** for React projects
+- Accounts for your stack (Supabase, Railway, Discord, etc. — the framework will generate setup guides for each)
+
+### Step 1: Download the Framework Files
+
+Clone this repository or download the three core files:
+```bash
+git clone https://github.com/dlowenth/claude-code-build-framework.git
+```
+
+You need `claude.md`, `prd-template.md`, and `kickoff-prompt-template.md`.
+
+### Step 2: Describe What You Want to Build
+
+Record a voice note, write out your idea, paste a conversation transcript, or just write a paragraph. Any format works. This is your raw project context. The more detail you provide, the fewer gaps Claude needs to infer.
+
+### Step 3: Generate Your Project Files
+
+Open a **new Claude chat** (claude.ai or the Claude app — not Claude Code yet). Paste the entire contents of `kickoff-prompt-template.md`. Attach the master `claude.md` and `prd-template.md` as files. Paste your project context at the bottom where indicated. Send it.
+
+Claude will assess the complexity of your project, select a build mode (Express or Full), and produce **four deliverable files**:
+
+1. **Project-specific `claude.md`** — The master build contract trimmed to only the sections relevant to your project
+2. **Completed `prd.md`** — The PRD template filled in from your context, with inferences marked
+3. **`kickoff-prompt.md`** — A ready-to-paste prompt for Claude Code
+4. **`open-questions.md`** — Every gap, inference, and decision for your review
+
+### Step 4: Resolve Open Questions (Mandatory Gate)
+
+**Do not skip this step.** Claude will walk you through every open question interactively — architecture decisions, auth choices, data model questions, UX decisions. For each item, confirm, override, or provide the missing answer. Once all questions are resolved, Claude updates all four files and re-delivers them with zero unresolved items.
+
+This gate exists because unresolved questions become silent assumptions in Claude Code that are expensive to fix later.
+
+### Step 5: Set Up Your Project and Install Plugins
+
+Create a new project folder. Place the project-specific `CLAUDE.md` (uppercase) and `prd.md` in the root. Initialize Git:
+
+```bash
+mkdir my-project && cd my-project
+git init
+```
+
+Copy your `CLAUDE.md` and `prd.md` into the project root.
+
+Start Claude Code with bypass permissions (so it can work autonomously):
+```bash
+claude --dangerously-skip-permissions
+```
+
+Install the required plugins:
+```
+/plugin install superpowers@claude-plugins-official
+/plugin install context7
+/plugin install frontend-design@claude-plugins-official
+```
+
+Restart Claude Code after installing plugins.
+
+### Step 6: Start the Build
+
+Paste the contents of your `kickoff-prompt.md` as the first message. Claude Code will:
+
+1. **Read** `CLAUDE.md` and `prd.md`
+2. **Run Superpowers brainstorming** — general design exploration, formal spec document, reviewer validation
+3. **Run the discuss phase** — targeted UI/UX questions about layout, interactions, user journeys, empty states
+4. **Generate setup guides** in `docs/resources/` for every third-party service
+5. **Present the Pre-Build checklist** and ask you to confirm each item is complete
+6. **Verify `.env`** against `.env.example` — won't proceed if variables are missing
+7. **Produce an architecture plan** and wait for your approval
+
+### Step 7: Approve and Execute
+
+Once you approve the plan:
+
+- **Express Build:** Claude Code builds the full application in one pass using Superpowers' subagent-driven execution. Every task gets a fresh context window and two-stage review. You review at the end.
+- **Full Build:** Claude Code executes phase by phase. Each phase produces deliverables, gets reviewed by spec and code quality subagents, and stops for your approval before the next phase begins.
+
+During execution, Claude Code works autonomously — no approval prompts, no interruptions. Hooks block dangerous operations. Superpowers' reviewers catch quality issues. You can walk away or let it run overnight.
+
+### Step 8: Review and Ship
+
+Claude Code presents the freeze audit checklist results. Review any flagged items, fix remaining issues, and deploy. After the build, review `lessons-learned.md` and fold any systemic patterns back into your master `claude.md` for the next project.
+
+---
+
+## How the Build Contract Learns
+
+The master `claude.md` is a living document. Every time a build uncovers a new failure pattern — a Supabase auth quirk, a React render loop, a Railway deployment issue — the fix gets added as a mandatory rule with the exact code pattern to follow. The next project starts with that knowledge baked in.
+
+During each build, Claude Code writes failures and fixes to a `lessons-learned.md` file. After shipping, you review that file and fold systemic lessons back into the master build contract. The system gets smarter with every project.
+
+---
+
+## What's Inside `claude.md`
+
+The build contract covers 24 sections including: core operating principles (plan-first, security over velocity, deterministic over probabilistic), default technology stack, tenancy model, authorization enforcement (RLS + helper functions), backend architecture, build order (Express 3-step or Full 8-phase), environment and deployment strategy, setup guide generation, error handling and debug mode, schema migration, data integrity, performance and observability, testing strategy (including Playwright E2E), code hygiene rules (React render stability, component architecture, feature extraction), LLM usage and cost efficiency, SEO and crawl policy, Claude Code execution contract (self-audit loop, parallel execution, hooks, permissions, STATE.md, discuss phase, Superpowers integration), and a 69-item freeze audit checklist.
+
+---
+
+## Express Build vs. Full Build
+
+**Express Build** (3 steps) — For simpler applications: single-tenant tools, internal dashboards, straightforward CRUD apps. One plan approval, one build pass, one freeze audit.
+
+**Full Build** (8 phases) — For complex applications: multi-tenant SaaS, multiple user roles, complex business logic, external integrations. Phased execution with verification gates, subagent-driven task execution, and phase-by-phase approval.
+
+The kickoff prompt detects complexity and recommends a mode. You can always override.
+
+---
+
+## Adapting for Your Stack
+
+The framework ships with defaults for React + Supabase + Discord OAuth + Railway, but it's designed to be adapted. Replace stack-specific sections with equivalents for your tools while keeping the structural principles: authorization at the data layer, plan before code, lessons learned encoded as rules.
+
+---
+
+## Credits and Acknowledgments
+
+- **[Superpowers](https://github.com/obra/superpowers)** by Jesse Vincent / Prime Radiant — Development workflow skills for AI coding agents. This framework integrates Superpowers as a required plugin for brainstorming, planning, execution, and code review.
+- **[Context7](https://github.com/upstash/context7)** by Upstash — Real-time library documentation MCP server. Recommended plugin for preventing outdated API hallucinations.
+- **[Frontend Design](https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design)** by Anthropic — Official skill for producing distinctive, production-grade frontend interfaces. Required for projects with user-facing screens.
+- **[Claude Code](https://code.claude.com)** by Anthropic — The AI coding agent this framework governs.
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+This framework was developed through iterative real-world application builds. You are free to use, adapt, and modify these files for your own projects. If you find it useful, consider contributing your own lessons learned back to the community.

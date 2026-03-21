@@ -34,7 +34,7 @@ Every new project must declare the following before any planning begins. The PRD
 | Repository | GitHub (required) |
 | Build Mode | Express Build / Full Build (see Section 1.5) |
 
-If any field is unresolved, it is an open question that must be answered before Phase 0 completes.
+If any field is unresolved, it is an open question that must be answered before Phase 0 completes. All open questions from PRD Section 17 must be resolved during the kickoff conversation — Claude Code must verify zero unresolved items before beginning the plan.
 
 ---
 
@@ -474,14 +474,19 @@ Even in Express Build, the internal priority order (auth before UI, backend befo
 Before any application code is written, the following must be completed:
 
 1. **Plan approved** by project owner (both modes)
-2. **Setup guides generated** in `docs/resources/` with Pre-Build sections populated (Section 8.8)
-3. **Human completes all Pre-Build manual steps** — account creation, API key generation, `.env` population
-4. **`.env.example`** created with all variables documented (Section 8.3.1)
+1a. **All open questions resolved** — the PRD's Section 17 must contain zero unresolved open questions. All items must have been worked through during the kickoff conversation and resolutions folded back into the PRD and project-specific `claude.md`. If the PRD arrives at Claude Code with unresolved open questions, Claude Code must stop and surface them before planning.
+2. **Setup guides generated** in `docs/resources/` with Pre-Build sections populated (Section 8.8). **`.env.example`** created with all variables documented (Section 8.3.1).
+3. **Human completes all Pre-Build manual steps** — account creation, API key generation, `.env` population. **HARD GATE: Claude Code must present the Pre-Build checklist from `docs/resources/README.md` and ask the human to confirm each item is complete before proceeding to the build.** Claude Code must not start writing application code (Phase 1 / Step 2) until the human explicitly confirms all pre-build steps are done. If any item is not done, Claude Code must wait.
+4. **`.env` verified** — Claude Code must check that `.env` exists and contains values for every variable listed in `.env.example`. If any variable is empty or missing, surface it to the human and do not proceed.
 5. **`.npmrc`** with `force=true` created (Section 8.3.2)
-6. **`.claude/settings.json`** created with sandbox + auto-allow configuration and project-specific network domains (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
+6. **`.claude/settings.json`** created with bypass permissions configuration and hooks enforcement (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
 7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
 8. **`.claude/agents/`** populated with custom subagents (Section 20.3.3, Full Build only)
-9. **Claude Code plugins reviewed and installed** — run `/plugin marketplace` and evaluate available plugins before Phase 0 / Step 2 begins. At minimum, evaluate `frontend-design` for any project with UI components. Document installed plugins in `lessons-learned.md`.
+9. **Claude Code plugins reviewed and installed** — run `/plugin marketplace` and evaluate available plugins before Phase 0 / Step 2 begins. **Required plugins:**
+   - **Superpowers** (`/plugin install superpowers@claude-plugins-official`) — provides brainstorming, planning, subagent-driven execution with two-stage review, systematic debugging, and verification workflows. Skills auto-trigger based on intent (slash commands are deprecated). See Section 20.9 for integration details.
+   - **Context7** (`/plugin install context7`) — fetches real-time, version-specific library documentation to prevent outdated API hallucinations. Recommended for all projects. See Section 20.9 for details.
+   - **Frontend Design** (`/plugin install frontend-design@claude-plugins-official`) — Anthropic's official skill for producing distinctive, production-grade frontend interfaces. Auto-activates during UI work. Required for any project with user-facing screens. Pushes Claude Code toward bold aesthetic choices instead of generic AI defaults.
+   - Document installed plugins in `lessons-learned.md`.
 10. **`STATE.md`** created in project root with initial build state (Section 20.7)
 11. **Implementation Decisions Captured** via Discuss Phase (Section 20.8) — Claude Code asks targeted questions about how the owner envisions the implementation before any code is written
 12. **`git init`** and initial commit with scaffolding files
@@ -1690,7 +1695,7 @@ Claude Code supports 12 hook events:
 The last two events (`TeammateIdle` and `TaskCompleted`) are only available when using Agent Teams. They provide automated quality gates: `TaskCompleted` hooks can validate a teammate's work against acceptance criteria and reject it if it doesn't pass, preventing premature task completion.
 
 #### 20.5.2 Hook Configuration
-Hooks are defined in `.claude/settings.json` alongside sandbox, permissions, and environment variables. The example below shows **only the hooks portion** — see Section 20.6 for the complete `settings.json` including sandbox and permission configuration. All settings go in a single file.
+Hooks are defined in `.claude/settings.json` alongside permissions and environment variables. The example below shows **only the hooks portion** — see Section 20.6 for the complete `settings.json` including permission configuration. All settings go in a single file.
 
 ```json
 {
@@ -1884,102 +1889,54 @@ Hooks are optional but recommended for Full Build projects. For Express Build, t
 
 The project-specific `claude.md` should note which hooks are active and what they enforce. The kickoff prompt should instruct Claude Code to create hook scripts during project scaffolding if hooks are declared in the PRD.
 
-### 20.6 Sandbox and Permission Configuration
-Claude Code's permission system requires approval for most actions by default — file writes, bash commands, network requests. During a build, this means hundreds of approval prompts, leading to approval fatigue (clicking "approve" without reading) and slower builds (more context compaction due to longer sessions). The sandbox approach eliminates ~84% of these prompts by defining OS-level boundaries upfront.
+### 20.6 Permission Configuration
+Claude Code's default permission system requires approval for most actions — file writes, bash commands, network requests. During a build, this means hundreds of approval prompts. For attended builds, this causes approval fatigue. For overnight/autonomous builds, any prompt stalls the build indefinitely with nobody to click approve. The goal is zero human interaction during execution — the human's role is decision-making (approving plans, resolving questions, confirming pre-build setup), not clicking approve buttons.
 
-#### 20.6.1 Recommended Configuration: Sandbox + Auto-Allow
-The recommended approach uses OS-level sandboxing for security boundaries and auto-allow for build velocity. The project's `.claude/settings.json` should include the following (plus the `hooks` block from Section 20.5.2 — all settings go in this single file):
+#### 20.6.1 Configuration: Bypass Permissions + Hooks Safety Layer
+
+**Launch command:**
+```bash
+claude --dangerously-skip-permissions
+```
+
+Or configure in `.claude/settings.json` for consistent behavior:
 
 ```json
 {
-  "sandbox": {
-    "enabled": true,
-    "autoAllowBashIfSandboxed": true,
-    "network": {
-      "allowedDomains": [
-        "registry.npmjs.org",
-        "github.com",
-        "*.supabase.co",
-        "*.supabase.in"
-      ],
-      "allowLocalBinding": true
-    }
-  },
   "permissions": {
-    "defaultMode": "acceptEdits",
-    "deny": [
-      "Bash(rm -rf *)",
-      "Bash(sudo *)"
-    ]
+    "bypassPermissions": true
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }
 ```
+
+Add the `hooks` block from Section 20.5.2 to this same file — all settings go in one `.claude/settings.json`.
 
 **How this works:**
-- `sandbox.enabled: true` + `autoAllowBashIfSandboxed: true` — OS-level isolation restricts Claude Code to the project directory and whitelisted network domains. Bash commands are auto-approved within the sandbox boundary. Claude Code physically cannot write outside the project directory or access unapproved services.
-- `permissions.defaultMode: "acceptEdits"` — File reads and writes are auto-approved. Combined with sandbox auto-allow, Claude Code can work autonomously within the sandbox boundary.
-- `network.allowedDomains` — Whitelist only the specific domains this project needs. An empty list means Claude Code cannot reach any external service. **Populate this per-project** with npm registry, GitHub, your database host, auth provider, and any API services.
-- `network.allowLocalBinding: true` — Allows the dev server to bind to localhost for local testing.
-- `deny` list — Safety floor that always blocks destructive commands regardless of sandbox state.
+- `bypassPermissions: true` — All file reads, writes, bash commands, and network requests are auto-approved. Claude Code can work fully autonomously, including overnight builds with no human present.
+- **Hooks are the safety layer.** With permissions bypassed, hooks (Section 20.5) become the primary defense. The `pre_tool_use.py` hook still fires before every tool execution and can block dangerous operations — even with bypass permissions enabled. Hooks execute before the permission system, so they are not bypassed.
+- **Superpowers provides quality assurance.** With Superpowers' two-stage review (spec compliance then code quality) after every task, Claude Code is double-checking its own work continuously. The human reviews at phase gates and freeze audit, not during execution.
 
-**Defense in depth:** Three layers work together:
-1. **Sandbox** (OS-level) — Restricts filesystem and network access at the kernel level
-2. **Hooks** (project-level) — `pre_tool_use.py` blocks operations the sandbox would allow but the framework prohibits (e.g., modifying `CLAUDE.md`)
-3. **Deny list** (explicit blocks) — Always blocks `rm -rf` and `sudo` regardless of other settings
+**Defense in depth:**
+1. **Hooks** (project-level, primary layer) — `pre_tool_use.py` blocks destructive commands (`rm -rf`), protects governing documents (`CLAUDE.md`, `prd.md`), and enforces framework rules. This is your active safety boundary.
+2. **Superpowers two-stage review** (per-task) — Every implementation task is reviewed for spec compliance and code quality by separate reviewer subagents before the next task begins.
+3. **`CLAUDE.md` rules** (behavioral) — Claude Code reads and follows the build contract's rules. This is a soft boundary — it depends on Claude Code's compliance, which is high but not absolute.
+4. **Git** (recovery) — All work is committed incrementally. If something goes wrong, `git revert` or `git reset` recovers to a known state. This is your recovery mechanism, not prevention.
 
-#### 20.6.2 Platform Support
-- **macOS:** Sandbox works natively via the built-in Seatbelt framework. No additional installation required.
-- **Linux:** Sandbox works via bubblewrap (`bwrap`). May need to be installed: `sudo apt install bubblewrap`.
-- **WSL2:** Sandbox works — uses bubblewrap, same as Linux.
-- **WSL1:** Not supported. Bubblewrap requires kernel features only available in WSL2.
-- **Native Windows:** Not yet supported. Native Windows sandbox support is planned by Anthropic.
+**Critical: Hooks are mandatory.**
+Without hooks, bypass permissions removes all safety boundaries. The `pre_tool_use.py` hook (Section 20.5.3) must be active to block destructive operations. Do not use bypass permissions without the hooks enforcement scripts in place.
 
-**Fallback for native Windows (until sandbox support ships):**
-Use the explicit permission allowlist approach instead of sandbox:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Read", "Write", "Edit",
-      "Bash(npm *)", "Bash(node *)", "Bash(git *)",
-      "Bash(npx *)", "Bash(python *)", "Bash(pip *)",
-      "Bash(cd *)", "Bash(ls *)", "Bash(cat *)",
-      "Bash(mkdir *)", "Bash(cp *)", "Bash(mv *)"
-    ],
-    "deny": [
-      "Bash(rm -rf /*)", "Bash(sudo *)",
-      "Bash(chmod 777 *)", "Read(.env)"
-    ]
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
-}
-```
-
-This provides less isolation than the sandbox but eliminates most permission prompts for common operations. The deny list and hooks provide the safety layer.
-
-#### 20.6.3 Project vs. Personal Settings
-- **`.claude/settings.json`** — Project-level configuration. Committed to Git. Shared with all developers. Contains sandbox settings, network domains, deny lists, and hook registrations. This is a project-level decision, not a personal preference.
-- **`.claude/settings.local.json`** — Per-developer overrides. Gitignored. Use for personal preferences, additional allowed directories, or local-only configuration.
+#### 20.6.2 Project vs. Personal Settings
+- **`.claude/settings.json`** — Project-level configuration. Committed to Git. Shared with all developers. Contains permission mode, hook registrations, and Agent Teams flag. This is a project-level decision, not a personal preference.
+- **`.claude/settings.local.json`** — Per-developer overrides. Gitignored. Use for personal preferences or local-only configuration.
 - **`~/.claude/settings.json`** — User-level global configuration. Applies to all projects. Use for Agent Teams flag and personal defaults.
 
 Project settings take precedence over global settings. Local settings override project settings.
 
-#### 20.6.4 CLI Mode Reference
-`Shift+Tab` cycles through permission modes during a session:
-- **Normal** — Claude asks permission for most actions
-- **Accept Edits** — File reads/writes auto-approved, bash still prompts
-- **Plan Mode** — Claude plans but doesn't execute
-
-When sandbox is enabled with `autoAllowBashIfSandboxed`, the `Accept Edits` mode (via `Shift+Tab` or `defaultMode` setting) handles file operations while the sandbox handles bash commands — together they cover everything.
-
-#### 20.6.5 Interaction with Hooks
-Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation that the sandbox would otherwise allow. This is the correct design — the sandbox provides OS-level isolation, hooks provide project-level rules. Both are needed for defense in depth.
+#### 20.6.3 Interaction with Hooks
+Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation even when bypass permissions is active. This is the correct design — bypass permissions removes the permission prompts, hooks enforce project-level rules. **With bypass permissions enabled, hooks are your only automated safety layer — they are mandatory, not optional.**
 
 ### 20.7 Persistent Build State (`STATE.md`)
 Every project must maintain a `STATE.md` file in the project root that tracks the current build state. This file is the single source of truth for where the build stands — surviving context compaction, session interruptions, and terminal restarts. Claude Code must read `STATE.md` at the start of every session and after every context compaction.
@@ -2080,6 +2037,88 @@ Before building a phase, Claude Code must conduct a focused discussion with the 
 - Claude Code must not skip this step even if the PRD seems detailed. The PRD describes features; the discuss phase describes experience.
 - `CONTEXT.md` is cumulative — each phase's decisions are appended, not overwritten.
 - Subagents executing tasks must be given `CONTEXT.md` in their spawn prompt so implementation decisions are consistently applied.
+- **If Superpowers is installed:** The brainstorming skill handles general design exploration and produces a formal spec document with reviewer validation. After brainstorming completes, the discuss phase runs as a **supplemental UI/UX pass** using the question table above to capture any GUI and user journey decisions that brainstorming didn't specifically address. Both brainstorming outputs and discuss phase decisions are captured in `CONTEXT.md`.
+
+### 20.9 Superpowers Plugin Integration
+The [Superpowers plugin](https://github.com/obra/superpowers) (by obra) provides a battle-tested development workflow with 14 composable skills. It is installed as a Claude Code plugin and coexists with this build contract. **Superpowers handles development process; `CLAUDE.md` handles architecture, security, and production readiness.** When they conflict, `CLAUDE.md` takes precedence — Superpowers explicitly defers to user instructions.
+
+#### 20.9.1 Installation
+Superpowers and Context7 are installed during pre-build scaffolding (Section 7, item 9):
+
+**Superpowers** (required):
+```
+/plugin install superpowers@claude-plugins-official
+```
+
+Or for early access features, use the obra marketplace:
+```
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+```
+
+**Important:** The slash commands `/brainstorm`, `/write-plan`, and `/execute-plan` are **deprecated** as of Superpowers v5.0. Skills now auto-trigger based on intent — describe what you want to build and Claude Code automatically invokes the brainstorming skill. To verify installation, start a session and say "Let's build X" — Claude Code should invoke the brainstorming skill, not start coding. If it starts coding, the plugin isn't loaded correctly.
+
+**Context7** (recommended):
+```
+/plugin install context7
+```
+
+Or as an MCP server (if plugin install isn't available):
+```
+claude mcp add context7 -- npx -y @upstash/context7-mcp@latest
+```
+
+Context7 fetches real-time, version-specific documentation from source repositories. It prevents Claude Code from hallucinating outdated APIs or deprecated methods. Add "use context7" to any prompt, or it auto-triggers when you mention library/framework names. Particularly valuable for Supabase, React, and any rapidly evolving library in your stack.
+
+**Frontend Design** (required for projects with UI):
+```
+/plugin install frontend-design@claude-plugins-official
+```
+
+Anthropic's official skill (277k+ installs) for producing distinctive, production-grade frontend interfaces. It auto-activates when Claude Code detects frontend work and pushes toward bold aesthetic choices — distinctive typography, purposeful color palettes, atmospheric depth — instead of the generic "AI slop" look. Before writing any UI code, it forces Claude Code to think through purpose, tone, constraints, and differentiation. No explicit invocation needed — it loads automatically during UI phases.
+
+#### 20.9.2 How Superpowers Integrates with This Framework
+
+**Brainstorming + Discuss Phase (Sections 20.8 + 20.9):**
+Superpowers' brainstorming skill runs first — it explores project context, asks clarifying questions, proposes 2-3 approaches, presents the design in sections for approval, produces a formal spec document, and dispatches a spec-reviewer subagent to validate it. After brainstorming completes, our discuss phase (Section 20.8) runs as a supplemental pass specifically targeting the UI/UX question table to ensure GUI design, user journeys, layout choices, interaction patterns, and empty states are explicitly captured. This two-layer approach ensures both the general design and the specific user experience are dialed in before coding starts.
+
+**Planning (replaces manual plan creation):**
+Superpowers' writing-plans skill breaks work into bite-sized tasks (2-5 minutes each) with exact file paths, complete implementation guidance, and verification steps. It maps out which files will be created or modified before defining tasks. A plan-reviewer subagent validates the plan against the spec before execution begins. This augments our self-audit loop — plan quality is verified before code is written, not just after.
+
+**Execution (enhances Section 20.3.2.1 Fresh Context Execution):**
+Superpowers' subagent-driven-development skill dispatches a fresh subagent per task with a **two-stage review** after each:
+1. **Spec compliance reviewer** — verifies the implementation matches the spec (nothing missing, nothing extra). Explicitly adversarial: "Do Not Trust the Report."
+2. **Code quality reviewer** — checks actual code quality, architecture, file organization.
+
+If either reviewer finds issues, the implementer fixes them and the reviewer re-checks. Implementer subagents return structured status: `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or `NEEDS_CONTEXT`. The controller handles each appropriately — re-dispatching with more context, upgrading model capability, breaking tasks apart, or escalating to the human.
+
+This is more rigorous than our self-audit loop alone and should be used for all task execution when Superpowers is installed.
+
+**Verification (strengthens Section 20.1 Definition of Done):**
+Superpowers' verification-before-completion skill prevents claiming work is done without running actual verification commands and confirming real output. "Evidence before assertions always." This pairs with our Playwright E2E tests (Section 14.6) — Superpowers verifies individual task completion, Playwright verifies end-to-end flows.
+
+**Debugging (supplements Section 20.2 Error Recovery):**
+Superpowers' systematic-debugging skill provides a 4-phase root cause analysis process with evidence-based verification. When our mid-build error recovery protocol (Section 20.2) identifies an issue, invoke systematic-debugging for complex problems rather than guessing at fixes.
+
+#### 20.9.3 What Superpowers Does NOT Replace
+Superpowers is a development process tool. The following remain governed exclusively by this build contract (`CLAUDE.md`):
+- Security architecture (RLS, auth patterns, Edge Function JWT handling)
+- Stack-specific lessons learned (Supabase, Discord OAuth, Clerk, Railway)
+- Production readiness (freeze audit, setup guides, observability, PITR)
+- Build state tracking (`STATE.md`)
+- Deployment discipline (tagged commits, schema drift prevention)
+- Permission configuration and hook enforcement
+- Data safety rules
+- Component architecture and decomposition rules
+- All 69 freeze audit checklist items
+
+#### 20.9.4 Priority Order
+1. **Your explicit instructions** (verbal or in chat) — highest priority
+2. **`CLAUDE.md`** (this build contract) — architecture, security, production rules
+3. **Superpowers skills** — development process and workflow
+4. **Claude Code defaults** — lowest priority
+
+If Superpowers' TDD skill says "always write tests first" and your `CLAUDE.md` or verbal instruction says otherwise, follow your instruction. Superpowers explicitly documents this precedence order.
 
 ---
 
@@ -2088,6 +2127,8 @@ Before building a phase, Claude Code must conduct a focused discussion with the 
 Before production readiness, Claude must confirm:
 
 - [ ] Architecture matches approved plan
+- [ ] All PRD open questions resolved before build began — no unresolved items in PRD Section 17
+- [ ] Pre-Build checklist confirmed complete by human before coding started — all setup guides in `docs/resources/` had Pre-Build sections done, `.env` verified against `.env.example`
 - [ ] Authorization boundaries enforced at data layer
 - [ ] Table-level GRANTs applied to all public tables with RLS (anon + authenticated roles)
 - [ ] First-login RLS policies handle unlinked auth_user_id state (Discord OAuth fallback — skip if using Clerk)
@@ -2106,7 +2147,7 @@ Before production readiness, Claude must confirm:
 - [ ] Custom subagents created in `.claude/agents/` for Full Build projects (security-reviewer, component-checker, test-coverage recommended — per Section 20.3.3)
 - [ ] Hook enforcement scripts created in `.claude/hooks/` with pre_tool_use guardrails active (per Section 20.5 — recommended for all projects, required for Full Build)
 - [ ] Hooks do not log sensitive data or make unauthorized external network calls (per Section 20.5.4)
-- [ ] `.claude/settings.json` committed with sandbox configuration and project-specific network domains (per Section 20.6 — or explicit permission allowlist if native Windows)
+- [ ] `.claude/settings.json` committed with bypass permissions and hooks enforcement active (per Section 20.6)
 - [ ] `.claude/settings.local.json` is in `.gitignore`
 - [ ] Tenant isolation proven (if applicable)
 - [ ] No recursive authorization logic
@@ -2122,6 +2163,7 @@ Before production readiness, Claude must confirm:
 - [ ] `STATE.md` exists and reflects all phases as complete with approval dates (per Section 20.7)
 - [ ] `CONTEXT.md` exists with implementation decisions captured for all UI phases (per Section 20.8)
 - [ ] Claude Code plugins reviewed and installed before build; installed plugins documented in `lessons-learned.md`
+- [ ] Superpowers plugin installed and brainstorming + discuss phase both completed before coding (per Section 20.9)
 - [ ] Privileged actions logged
 - [ ] No production data deleted during development or testing (per Section 12.3)
 - [ ] Debug mode toggles correctly and does not leak data when off
@@ -2202,6 +2244,8 @@ Do not modify `CLAUDE.md`, `prd.md`, or any workflow/documentation file without 
 
 ## 22.6 Stop and Ask Triggers
 Claude must pause and request clarification when encountering ambiguity around:
+- Unresolved open questions in PRD Section 17 (hard gate — do not proceed until all are resolved)
+- Pre-Build checklist not confirmed complete (hard gate — do not start coding until human confirms all setup guides done and `.env` verified)
 - Tenancy model choice
 - Roles and permission boundaries
 - Ownership rules (who can create, edit, delete what)
@@ -2233,11 +2277,12 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 1.4 |
+| Version | 1.5 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
-| Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7) — single source of truth for build progress surviving compaction and session interruptions. Discuss Phase via CONTEXT.md (Section 20.8) — implementation decision capture before coding to close the gap between PRD features and owner's vision. Fresh Context Execution Pattern (Section 20.3.2.1) — subagent-based task execution to prevent context degradation during long builds. Expanded Freeze Audit Checklist. |
+| Changes from v1.4 | Added: Superpowers plugin integration (Section 20.9) with corrected install method (slash commands deprecated, skills auto-trigger). Context7 plugin recommended for real-time library documentation. Frontend Design plugin required for UI projects. Subagent-driven execution with two-stage review, verification-before-completion, systematic debugging. Supplemental UI/UX discuss phase after Superpowers brainstorming. Replaced sandbox permission model with bypass permissions + hooks as the only permission configuration (Section 20.6). Open Questions Resolution Phase as mandatory hard gate before handoff to Claude Code — all questions must be walked through interactively and resolutions folded back into PRD and claude.md. Pre-Build Setup hard gate — Claude Code must present checklist and get human confirmation before coding, plus .env verification against .env.example. |
+| Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7). Discuss Phase via CONTEXT.md (Section 20.8). Fresh Context Execution Pattern (Section 20.3.2.1). Expanded Freeze Audit Checklist (67 items). |
 | Changes from v1.2 | Added: `.env.example` as mandatory scaffolding artifact with grouped sections, client-safe vs server-only scope, and sync requirement. Corrected Agent Teams architecture per official docs (mailbox communication, shared task list with dependency tracking, teammate direct interaction, ~5x token cost, team-specific hooks). Added Subagents via Task Tool, Custom Subagents in `.claude/agents/`, Claude Code Hooks as automated rule enforcement with template scripts (PreToolUse guardrails, PostToolUse quality checks, Stop session reminders). Added TeammateIdle and TaskCompleted hook events for Agent Teams quality gates. |
 | Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, expanded Freeze Audit Checklist |
 | Changes from v1.0 | Added: Project Metadata Template, Default Stack, Pre-Approved Dependencies, RLS Helper Functions, Permissions Matrix requirement, Environment/Deployment Strategy, Error Handling/Debug Mode, Schema Migration Strategy, Testing Strategy, Auto-Remediation framework, Rollback/Recovery, Code Hygiene Rules, React Render Stability Rules, Nightly Security Audit, LLM Usage/Cost Efficiency/Processing Strategy, SEO/Crawl Policy/AI Discoverability, Build Mode (Express/Full), Agent Teams guidance, Supabase+Discord OAuth RLS rules, Edge Function JWT verification rules, Client-side getUser() vs getSession() context rules, Supabase Auth two-effect initialization pattern, Auth diagnostic logging strategy, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, Railway cross-platform build fix, expanded Freeze Audit Checklist |

@@ -242,9 +242,8 @@ This section must be completed before planning begins. Values here override `cla
 - Custom hooks: `<<LIST OR NONE>>`
 - Hooks make external network calls: No (default) / Yes — requires approval and data exposure review
 
-### Sandbox and Permission Configuration *(per `claude.md` Section 20.6)*
-- Sandbox enabled: Yes (recommended — macOS, Linux, WSL2) / No (native Windows fallback)
-- Permission mode: `acceptEdits` (recommended with sandbox) / explicit allowlist (Windows fallback)
+### Permission Configuration *(per `claude.md` Section 20.6)*
+- Permission mode: `bypassPermissions` with hooks enforcement (per `claude.md` Section 20.6)
 - Network allowed domains: `<<LIST — e.g., registry.npmjs.org, github.com, *.supabase.co>>`
 
 ### End-to-End Testing *(per `claude.md` Section 14.6)*
@@ -419,7 +418,9 @@ List all environment variables the application requires. No hardcoded secrets in
 - Discuss Phase must be conducted before coding to capture implementation decisions in `CONTEXT.md` — mandatory for UI phases (per `claude.md` Section 20.8)
 - For Full Build phases with 3+ tasks, use fresh context execution via subagents to prevent context degradation (per `claude.md` Section 20.3.2.1)
 - Playwright E2E tests should be generated and run before presenting the build as complete (per `claude.md` Section 14.6 — if applicable)
-- Review and install Claude Code plugins before Phase 0 / Step 2 — at minimum evaluate `frontend-design` for UI projects
+- Superpowers plugin must be installed and used for brainstorming, planning, and subagent-driven execution with two-stage review (per `claude.md` Section 20.9)
+- Context7 plugin recommended for real-time library documentation to prevent outdated API hallucinations (per `claude.md` Section 20.9)
+- Review and install Claude Code plugins before Phase 0 / Step 2 — Superpowers required, Context7 recommended, Frontend Design required for UI projects
 - Additional build notes: `<<NOTES>>`
 
 ### Edge Function Deployment Manifest *(If Using Supabase Edge Functions)*
@@ -485,12 +486,14 @@ Use this structure if Build Mode is **Express Build**.
 - Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
 - **Gate:** Owner approves plan before any code is written.
 
-#### Step 1.5: Pre-Build Manual Setup + Discuss Phase
+#### Step 1.5: Pre-Build Manual Setup + Brainstorm + Discuss Phase
 Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before proceeding.
-- Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
-- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) — targeted questions about how the owner envisions the implementation. Decisions recorded in `CONTEXT.md`.
+- Install Superpowers, Context7, and `frontend-design` plugins (per `claude.md` Section 20.9).
+- Run Superpowers **brainstorming** skill — general design exploration, formal spec document, spec reviewer validation.
+- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) as a supplemental UI/UX pass — targeted questions about GUI design, user journeys, layout, interactions, empty states. Decisions recorded in `CONTEXT.md`.
 - Claude Code creates `STATE.md` with initial build state (per `claude.md` Section 20.7).
-- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete. `CONTEXT.md` captured. `STATE.md` initialized.
+- **HARD GATE:** Claude Code presents the Pre-Build checklist from `docs/resources/README.md` and asks the human to confirm each item is complete. Claude Code verifies `.env` exists with values for every variable in `.env.example`. **Do not proceed to Step 2 until the human confirms and `.env` passes verification.**
+- **Gate:** Human confirms all Pre-Build items complete. `.env` verified. Brainstorming spec approved. `CONTEXT.md` captured. `STATE.md` initialized.
 
 #### Step 2: Build
 Claude Code builds the full application in one pass, following this priority order:
@@ -531,12 +534,14 @@ Use this structure if Build Mode is **Full Build**. Each phase must include file
 - Manual verification steps: `<<LIST>>`
 - Setup guide inventory: `<<LIST OF TOOLS NEEDING GUIDES>>`
 
-#### Phase 0.5: Pre-Build Manual Setup + Discuss Phase
+#### Phase 0.5: Pre-Build Manual Setup + Brainstorm + Discuss Phase
 Claude Code generates setup guides in `docs/resources/` with Pre-Build sections populated. The human completes all pre-build manual steps (account creation, API key generation, `.env` population) before Phase 1 begins.
-- Review and install relevant Claude Code plugins (`/plugin marketplace`). At minimum evaluate `frontend-design` for projects with UI.
-- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) — targeted questions about how the owner envisions the implementation. Decisions recorded in `CONTEXT.md`. Can be done once for the whole build or incrementally per phase.
+- Install Superpowers, Context7, and `frontend-design` plugins (per `claude.md` Section 20.9).
+- Run Superpowers **brainstorming** skill — general design exploration, formal spec document, spec reviewer validation.
+- Claude Code conducts the **Discuss Phase** (per `claude.md` Section 20.8) as a supplemental UI/UX pass — targeted questions about GUI design, user journeys, layout, interactions, empty states. Decisions recorded in `CONTEXT.md`. Can be done once for the whole build or incrementally per phase.
 - Claude Code creates `STATE.md` with initial build state (per `claude.md` Section 20.7).
-- **Gate:** All Pre-Build checklist items in `docs/resources/README.md` marked complete. `CONTEXT.md` captured. `STATE.md` initialized.
+- **HARD GATE:** Claude Code presents the Pre-Build checklist from `docs/resources/README.md` and asks the human to confirm each item is complete. Claude Code verifies `.env` exists with values for every variable in `.env.example`. **Do not proceed to Phase 1 until the human confirms and `.env` passes verification.**
+- **Gate:** Human confirms all Pre-Build items complete. `.env` verified. Brainstorming spec approved. `CONTEXT.md` captured. `STATE.md` initialized.
 
 #### Phase 1: Auth + Tenancy + RBAC
 - Scope: `<<DESCRIPTION>>`
@@ -593,8 +598,13 @@ Claude Code generates setup guides in `docs/resources/` with Pre-Build sections 
 - NA2: `<<NON_ASSUMPTION>>`
 
 ### Open Questions (Must Be Resolved Before Build Begins)
+> **HARD GATE:** No open questions may remain unresolved when this PRD is handed to Claude Code. All items below must be resolved during the kickoff conversation's Open Questions Resolution Phase. Once resolved, move them to the Resolved Decisions section below and update the relevant PRD sections.
+
 1. `<<QUESTION>>`
 2. `<<QUESTION>>`
+
+### Resolved Decisions (From Open Questions Resolution Phase)
+- RD1: `<<QUESTION>>` — **Resolution:** `<<DECISION>>` — Updated in PRD Section `<<N>>`
 
 ---
 
@@ -623,4 +633,4 @@ Claude Code generates setup guides in `docs/resources/` with Pre-Build sections 
 **If Full Build:**
 > **Produce the Plan output only. Do not write code. Include assumptions and open questions explicitly. Break execution into phases with acceptance criteria and manual verification steps.**
 
-Claude must confirm receipt of both `claude.md` and this PRD before beginning the plan.
+Claude must confirm receipt of both `claude.md` and this PRD before beginning the plan. **Claude Code must verify that PRD Section 17 contains zero unresolved open questions before proceeding.** If any open questions remain, Claude Code must stop and surface them to the project owner for resolution.
