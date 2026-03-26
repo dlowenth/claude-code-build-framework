@@ -481,7 +481,7 @@ Before any application code is written, the following must be completed:
 4. **`.env` verified** — Claude Code must check that `.env` exists and contains values for every variable listed in `.env.example`. If any variable is empty or missing, surface it to the human and do not proceed.
 4a. **MCP/CLI service connections configured** — For services with MCP or CLI support (Supabase, Railway, etc.), Claude Code configures the connections scoped to the new project. Verify each connection targets the correct project before any write operations. See Section 8.8.2 for safety rules.
 5. **`.npmrc`** with `force=true` created (Section 8.3.2)
-6. **`.claude/settings.json`** created with bypass permissions configuration and hooks enforcement (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
+6. **`.claude/settings.json`** created with auto mode permission configuration and hooks enforcement (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
 7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
 8. **`.claude/agents/`** populated with custom subagents (Section 20.3.3, Full Build only)
 9. **Development framework and plugins installed** based on framework selection (Section 20.9):
@@ -1934,21 +1934,23 @@ Hooks are optional but recommended for Full Build projects. For Express Build, t
 The project-specific `claude.md` should note which hooks are active and what they enforce. The kickoff prompt should instruct Claude Code to create hook scripts during project scaffolding if hooks are declared in the PRD.
 
 ### 20.6 Permission Configuration
-Claude Code's default permission system requires approval for most actions — file writes, bash commands, network requests. During a build, this means hundreds of approval prompts. For attended builds, this causes approval fatigue. For overnight/autonomous builds, any prompt stalls the build indefinitely with nobody to click approve. The goal is zero human interaction during execution — the human's role is decision-making (approving plans, resolving questions, confirming pre-build setup), not clicking approve buttons.
+Claude Code's default permission system requires approval for most actions. During a build, this means hundreds of approval prompts. The goal is zero human interaction during execution — the human's role is decision-making (approving plans, resolving questions, confirming pre-build setup), not clicking approve buttons.
 
-#### 20.6.1 Configuration: Bypass Permissions + Hooks Safety Layer
+#### 20.6.1 Configuration: Auto Mode (Recommended)
+
+Auto mode is Claude Code's built-in intelligent permission system (launched March 2026). A two-layer classifier reviews every action before it executes: safe actions proceed automatically, risky actions (mass file deletion, data exfiltration, malicious code) are blocked and Claude tries a safer approach. If Claude accumulates 3 consecutive denials or 20 total, it escalates to the human. In headless mode, it terminates.
 
 **Launch command:**
 ```bash
-claude --dangerously-skip-permissions
+claude --auto
 ```
 
-Or configure in `.claude/settings.json` for consistent behavior:
+Or configure in `.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "bypassPermissions": true
+    "defaultMode": "auto"
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
@@ -1958,29 +1960,35 @@ Or configure in `.claude/settings.json` for consistent behavior:
 
 Add the `hooks` block from Section 20.5.2 to this same file — all settings go in one `.claude/settings.json`.
 
-**How this works:**
-- `bypassPermissions: true` — All file reads, writes, bash commands, and network requests are auto-approved. Claude Code can work fully autonomously, including overnight builds with no human present.
-- **Hooks are the safety layer.** With permissions bypassed, hooks (Section 20.5) become the primary defense. The `pre_tool_use.py` hook still fires before every tool execution and can block dangerous operations — even with bypass permissions enabled. Hooks execute before the permission system, so they are not bypassed.
-- **Superpowers provides quality assurance.** With Superpowers' two-stage review (spec compliance then code quality) after every task, Claude Code is double-checking its own work continuously. The human reviews at phase gates and freeze audit, not during execution.
+**Why auto mode over bypass permissions:**
+- **Built-in safety classifier.** Auto mode runs a Sonnet 4.6-based classifier on every action, checking for destructive operations, data exfiltration, and prompt injection. Bypass permissions has no such checks.
+- **Prompt injection defense.** A server-side probe scans tool outputs (file reads, web fetches, shell output) before they enter the agent's context. If content looks like an injection attempt, the agent is warned.
+- **Self-recovering.** When the classifier blocks an action, Claude doesn't halt — it tries a safer approach. Bypass permissions never blocks anything.
+- **Still fully autonomous.** Safe actions auto-approve with no human interaction. The 0.4% false positive rate means almost zero unnecessary interruptions for overnight builds.
+- **Hooks still work on top.** Your `pre_tool_use.py` hook fires before auto mode's classifier, providing an additional project-specific safety layer.
 
-**Defense in depth:**
-1. **Hooks** (project-level, primary layer) — `pre_tool_use.py` blocks destructive commands (`rm -rf`), protects governing documents (`CLAUDE.md`, `prd.md`), and enforces framework rules. This is your active safety boundary.
-2. **Superpowers two-stage review** (per-task) — Every implementation task is reviewed for spec compliance and code quality by separate reviewer subagents before the next task begins.
-3. **`CLAUDE.md` rules** (behavioral) — Claude Code reads and follows the build contract's rules. This is a soft boundary — it depends on Claude Code's compliance, which is high but not absolute.
-4. **Git** (recovery) — All work is committed incrementally. If something goes wrong, `git revert` or `git reset` recovers to a known state. This is your recovery mechanism, not prevention.
+**Defense in depth (four layers):**
+1. **Auto mode classifier** (Anthropic-provided) — Blocks destructive commands, data exfiltration, and prompt injection before execution. This is the broadest safety layer.
+2. **Hooks** (project-level) — `pre_tool_use.py` blocks operations that auto mode would allow but the framework prohibits (e.g., modifying `CLAUDE.md`, specific project rules). Hooks fire before the permission system.
+3. **Superpowers two-stage review** (per-task) — Every implementation task is reviewed for spec compliance and code quality by separate reviewer subagents.
+4. **Git** (recovery) — All work is committed incrementally. `git revert` or `git reset` recovers to a known state.
 
-**Critical: Hooks are mandatory.**
-Without hooks, bypass permissions removes all safety boundaries. The `pre_tool_use.py` hook (Section 20.5.3) must be active to block destructive operations. Do not use bypass permissions without the hooks enforcement scripts in place.
+**Fallback: Bypass Permissions**
+If auto mode is not available (older Claude Code versions, or specific CI/CD environments), bypass permissions remains available:
+```bash
+claude --dangerously-skip-permissions
+```
+When using bypass permissions, hooks become your **only** automated safety layer — they are mandatory, not optional. Auto mode is strongly preferred over bypass permissions for all builds.
 
 #### 20.6.2 Project vs. Personal Settings
-- **`.claude/settings.json`** — Project-level configuration. Committed to Git. Shared with all developers. Contains permission mode, hook registrations, and Agent Teams flag. This is a project-level decision, not a personal preference.
-- **`.claude/settings.local.json`** — Per-developer overrides. Gitignored. Use for personal preferences or local-only configuration.
-- **`~/.claude/settings.json`** — User-level global configuration. Applies to all projects. Use for Agent Teams flag and personal defaults.
+- **`.claude/settings.json`** — Project-level configuration. Committed to Git. Shared with all developers. Contains permission mode, hook registrations, and Agent Teams flag.
+- **`.claude/settings.local.json`** — Per-developer overrides. Gitignored.
+- **`~/.claude/settings.json`** — User-level global configuration. Applies to all projects.
 
 Project settings take precedence over global settings. Local settings override project settings.
 
 #### 20.6.3 Interaction with Hooks
-Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation even when bypass permissions is active. This is the correct design — bypass permissions removes the permission prompts, hooks enforce project-level rules. **With bypass permissions enabled, hooks are your only automated safety layer — they are mandatory, not optional.**
+Hooks execute **before** the permission system. A `pre_tool_use.py` hook can block an operation even in auto mode or bypass permissions. This is the correct design — auto mode provides broad safety, hooks enforce project-specific rules. Both layers work together.
 
 ### 20.7 Persistent Build State (`STATE.md`)
 Every project must maintain a `STATE.md` file in the project root that tracks the current build state. This file is the single source of truth for where the build stands — surviving context compaction, session interruptions, and terminal restarts. Claude Code must read `STATE.md` at the start of every session and after every context compaction.
@@ -2205,7 +2213,7 @@ Before production readiness, Claude must confirm:
 - [ ] Custom subagents created in `.claude/agents/` for Full Build projects (security-reviewer, component-checker, test-coverage recommended — per Section 20.3.3)
 - [ ] Hook enforcement scripts created in `.claude/hooks/` with pre_tool_use guardrails active (per Section 20.5 — recommended for all projects, required for Full Build)
 - [ ] Hooks do not log sensitive data or make unauthorized external network calls (per Section 20.5.4)
-- [ ] `.claude/settings.json` committed with bypass permissions and hooks enforcement active (per Section 20.6)
+- [ ] `.claude/settings.json` committed with auto mode permission configuration and hooks enforcement active (per Section 20.6)
 - [ ] `.claude/settings.local.json` is in `.gitignore`
 - [ ] Tenant isolation proven (if applicable)
 - [ ] No recursive authorization logic
@@ -2340,7 +2348,7 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
-| Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. MCP configuration added to scaffolding checklist. Freeze audit updated for three-category model and MCP safety verification. |
+| Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. Replaced bypass permissions with auto mode as recommended permission configuration (Section 20.6). Freeze audit updated for three-category model, MCP safety, and auto mode (70 items). |
 | Changes from v1.5 | **v2.0 - Multi-Framework Orchestration.** Transformed from a single-framework system into a governing build contract that auto-selects the right development framework based on project requirements. Section 20.9 rewritten as Development Framework Selection and Integration with support for Superpowers (default, production builds), GSD (experimental/MVP builds), and BMAD (enterprise/compliance builds). Kickoff prompt now detects both build complexity (Express/Full) and requirements clarity to recommend the optimal framework. Framework-conditional rules: setup guides, pre-build gates, STATE.md, CONTEXT.md, and freeze audit scope adjust based on selected framework. Common infrastructure (Context7, Frontend Design, hooks) applies to all frameworks. |
 | Changes from v1.4 | Added: Superpowers plugin integration with corrected install method. Context7 plugin. Frontend Design plugin. Bypass permissions + hooks as permission configuration. Open Questions Resolution Phase as mandatory hard gate. Pre-Build Setup hard gate. Custom subagents with `context: fork` and `agent:` type frontmatter. |
 | Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7). Discuss Phase via CONTEXT.md (Section 20.8). Fresh Context Execution Pattern (Section 20.3.2.1). Expanded Freeze Audit Checklist (67 items). |

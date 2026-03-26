@@ -51,10 +51,10 @@ Claude walks you through every open question interactively. Architecture decisio
 
 ### Step 4: Set Up Your Project
 
-Create a project folder. Place `CLAUDE.md` and `prd.md` in the root. Start Claude Code with bypass permissions:
+Create a project folder. Place `CLAUDE.md` and `prd.md` in the root. Start Claude Code in auto mode (autonomous execution with built-in safety classifier):
 
 ```bash
-claude --dangerously-skip-permissions
+claude --auto
 ```
 
 Install the selected framework and common plugins:
@@ -86,7 +86,7 @@ Claude Code works autonomously. Hooks block dangerous operations. The selected f
 
 ### Step 7: Ship
 
-The freeze audit checklist must pass before deployment (full 69 items for Superpowers/BMAD, lighter MVP readiness for GSD). After shipping, review `lessons-learned.md` and fold systemic patterns back into the master build contract for the next project.
+The freeze audit checklist must pass before deployment (full 70 items for Superpowers/BMAD, lighter MVP readiness for GSD). After shipping, review `lessons-learned.md` and fold systemic patterns back into the master build contract for the next project.
 
 ---
 
@@ -101,7 +101,7 @@ No matter which development framework is selected, the build contract provides:
 - **Hard gates** -- Open questions must be resolved before handoff. Pre-build setup must be confirmed. `.env` verified against `.env.example`. These exist because without them, critical steps get forgotten.
 - **Automation-first setup** -- Services with CLI/MCP support (Supabase, Railway) are configured programmatically by Claude Code during the build. Setup guides shrink to just account creation and credential copying. All automation is scoped to a new project and never touches production data.
 - **Production readiness** -- 70-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
-- **Hooks safety layer** -- `pre_tool_use.py` blocks destructive operations even with bypass permissions enabled
+- **Hooks safety layer** -- `pre_tool_use.py` enforces project-specific rules on top of auto mode's built-in safety classifier
 - **Build state persistence** -- `STATE.md` survives context compaction and session restarts (Superpowers builds)
 - **Component architecture rules** -- Mandatory decomposition, ~200 line file ceiling, extract-then-share protocol
 - **Code hygiene** -- React render stability, no context objects in useCallback deps, error/re-render/retry loop prevention

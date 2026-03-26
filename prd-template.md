@@ -243,7 +243,7 @@ This section must be completed before planning begins. Values here override `cla
 - Hooks make external network calls: No (default) / Yes — requires approval and data exposure review
 
 ### Permission Configuration *(per `claude.md` Section 20.6)*
-- Permission mode: `bypassPermissions` with hooks enforcement (per `claude.md` Section 20.6)
+- Permission mode: `auto` with hooks enforcement (per `claude.md` Section 20.6)
 
 ### Development Framework *(per `claude.md` Section 20.9)*
 - Selected framework: Superpowers *(default)* / GSD *(experimental/MVP)* / BMAD *(enterprise/compliance)*

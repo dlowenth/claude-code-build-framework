@@ -55,7 +55,7 @@ Based on the project context, select the development framework that will handle 
 
 What Superpowers provides: Structured brainstorming with formal spec review, implementation planning with bite-sized tasks, subagent-driven execution with two-stage review (spec compliance then code quality), verification-before-completion, systematic debugging. Our discuss phase adds a supplemental UI/UX pass for GUI and user journey decisions.
 
-What our framework adds on top: Setup guide generation for all third-party services (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution phase, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 69-item freeze audit, and all security/auth/deployment rules.
+What our framework adds on top: Setup guide generation for all third-party services (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution phase, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 70-item freeze audit, and all security/auth/deployment rules.
 
 **GSD (Get Shit Done)** — Use when:
 - Requirements are unclear, experimental, or expected to change significantly
@@ -231,13 +231,13 @@ Generate a ready-to-paste prompt for Claude Code that:
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
 - Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows to Railway/Linux cross-platform deploy)
 - Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding (per `claude.md` Section 8.3.1)
-- Reminds Claude Code to create `.claude/settings.json` with bypass permissions and hooks enforcement during scaffolding (per `claude.md` Section 20.6).
+- Reminds Claude Code to create `.claude/settings.json` with auto mode permission configuration and hooks enforcement during scaffolding (per `claude.md` Section 20.6).
 
 **If Full Build:**
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved
 - Asks Claude Code to produce the full plan output (architecture, data model, authorization, permissions, screens, calculations if applicable, phased execution plan)
 - Installs the selected development framework and common plugins (per `claude.md` Section 20.9)
-- **If Superpowers:** Generates setup guides with Pre-Build sections, runs brainstorming + discuss phase, creates STATE.md and CONTEXT.md, presents pre-build hard gate, verifies `.env`. Uses subagent-driven-development with two-stage review for task execution. Updates STATE.md at every phase transition.
+- **If Superpowers:** Generates setup guides using three-category model, runs brainstorming + discuss phase, creates STATE.md and CONTEXT.md, presents Category 1 checklist for human confirmation, verifies `.env`. Uses subagent-driven-development with two-stage review for task execution. Updates STATE.md at every phase transition.
 - **If GSD:** Runs `/gsd:new-project` for initialization. GSD handles its own discuss, research, planning, and phase-by-phase execution with adversarial plan verification. Skip setup guides, STATE.md, CONTEXT.md, and pre-build hard gate. GSD uses atomic git commits per task.
 - **If BMAD:** Runs BMAD initialization and follows the full agent-guided workflow (Business Analyst, Product Manager, Architect, Scrum Master, Developer, QA). Generates setup guides, presents pre-build hard gate, verifies `.env`. BMAD manages story-by-story execution with QA review.
 - Reminds Claude Code of per-phase verification gates (Superpowers/BMAD) or GSD's built-in plan verification
@@ -287,7 +287,7 @@ For Express Build, only `pre_tool_use.py` is recommended. For Full Build, all th
 
 **Both modes:**
 - Reminds Claude Code of the key constraints **that are relevant to this specific project** from `claude.md` — do not list constraints you removed. If the project includes LLM calls, remind Claude Code of: model tier selection per task, rate limit handling requirements, Python as default for batch scripts, sequential-first parallelism, and cost logging.
-- Reminds Claude Code to generate `docs/resources/` with setup guides for every external service, a `README.md` index, and to populate Pre-Build sections before the human starts manual setup. Setup guides must contain only manual steps — omit anything Claude Code automates. No actual secrets in any guide.
+- Reminds Claude Code to generate `docs/resources/` with setup guides using the three-category model (per `claude.md` Section 8.8): Category 1 (human-only steps), Category 2 (automated via CLI/MCP, documented for transparency), Category 3 (post-build refinement). Include a `README.md` index. No actual secrets in any guide.
 - Ends with: "Confirm receipt of `claude.md` and `prd.md`, then produce the plan. Do not write code."
 
 ---
