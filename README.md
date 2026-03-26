@@ -72,7 +72,13 @@ Install the selected framework and common plugins:
 
 ### Step 5: Start the Build
 
-Paste the kickoff prompt. Claude Code reads the build contract and PRD, runs the selected framework's initialization, and produces an architecture plan. For Superpowers and BMAD, it generates setup guides for every third-party service and presents a pre-build checklist for your confirmation before writing any code.
+Paste the kickoff prompt. Claude Code reads the build contract and PRD, runs the selected framework's initialization, and produces an architecture plan. For Superpowers and BMAD, it generates setup guides using the three-category model:
+
+- **Category 1 (Human-Only):** Create accounts, create a NEW project in each service, copy base credentials into `.env`. This is the only manual setup you do.
+- **Category 2 (Automated):** Claude Code handles everything else via CLI/MCP -- schema creation, auth provider configuration, RLS policies, Edge Function deployment, storage buckets. No dashboard clicking.
+- **Category 3 (Post-Build):** Production hardening after the build ships -- custom domains, tier upgrades, security review.
+
+Claude Code presents the Category 1 checklist and waits for your confirmation before writing any code. All MCP/CLI connections are scoped to your specific new project -- never touching existing projects or production data.
 
 ### Step 6: Execute
 
@@ -93,7 +99,8 @@ No matter which development framework is selected, the build contract provides:
 - **Security architecture** -- RLS policies, auth patterns (Discord OAuth, Clerk), JWT handling, data isolation, permission enforcement at the data layer
 - **Stack-specific lessons learned** -- Dozens of battle-tested patterns for Supabase, React, Railway. The `getSession()` vs `getUser()` deadlock. The two-effect auth initialization. The `.npmrc` cross-platform fix. Every bug fought gets encoded as a mandatory rule.
 - **Hard gates** -- Open questions must be resolved before handoff. Pre-build setup must be confirmed. `.env` verified against `.env.example`. These exist because without them, critical steps get forgotten.
-- **Production readiness** -- 69-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
+- **Automation-first setup** -- Services with CLI/MCP support (Supabase, Railway) are configured programmatically by Claude Code during the build. Setup guides shrink to just account creation and credential copying. All automation is scoped to a new project and never touches production data.
+- **Production readiness** -- 70-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
 - **Hooks safety layer** -- `pre_tool_use.py` blocks destructive operations even with bypass permissions enabled
 - **Build state persistence** -- `STATE.md` survives context compaction and session restarts (Superpowers builds)
 - **Component architecture rules** -- Mandatory decomposition, ~200 line file ceiling, extract-then-share protocol

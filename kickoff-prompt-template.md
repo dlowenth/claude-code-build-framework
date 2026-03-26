@@ -185,7 +185,7 @@ If **BMAD**:
 - Setup guide generation for all external services (Section 8.8)
 - Pre-branch checklist (for ongoing development)
 
-**Versioning:** Set the version to `2.0-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.0, listing the build mode selected, the development framework selected, and a summary of what was removed or simplified.
+**Versioning:** Set the version to `2.1-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.1, listing the build mode selected, the development framework selected, and a summary of what was removed or simplified.
 
 ---
 

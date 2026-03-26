@@ -476,9 +476,10 @@ Before any application code is written, the following must be completed:
 
 1. **Plan approved** by project owner (both modes)
 1a. **All open questions resolved** — the PRD's Section 17 must contain zero unresolved open questions. All items must have been worked through during the kickoff conversation and resolutions folded back into the PRD and project-specific `claude.md`. If the PRD arrives at Claude Code with unresolved open questions, Claude Code must stop and surface them before planning.
-2. **Setup guides generated** in `docs/resources/` with Pre-Build sections populated (Section 8.8). **`.env.example`** created with all variables documented (Section 8.3.1).
-3. **Human completes all Pre-Build manual steps** — account creation, API key generation, `.env` population. **HARD GATE: Claude Code must present the Pre-Build checklist from `docs/resources/README.md` and ask the human to confirm each item is complete before proceeding to the build.** Claude Code must not start writing application code (Phase 1 / Step 2) until the human explicitly confirms all pre-build steps are done. If any item is not done, Claude Code must wait.
+2. **Setup guides generated** in `docs/resources/` using the three-category model (Section 8.8). Category 1 (human-only) and Category 2 (automated) steps documented. **`.env.example`** created with all variables documented (Section 8.3.1).
+3. **Human completes all Category 1 (human-only) setup steps** — account creation, new project creation, `.env` population with base credentials. **HARD GATE: Claude Code must present the Category 1 checklist from `docs/resources/README.md` and ask the human to confirm each item is complete before proceeding to the build.** Claude Code must not start writing application code (Phase 1 / Step 2) until the human explicitly confirms. If any item is not done, Claude Code must wait.
 4. **`.env` verified** — Claude Code must check that `.env` exists and contains values for every variable listed in `.env.example`. If any variable is empty or missing, surface it to the human and do not proceed.
+4a. **MCP/CLI service connections configured** — For services with MCP or CLI support (Supabase, Railway, etc.), Claude Code configures the connections scoped to the new project. Verify each connection targets the correct project before any write operations. See Section 8.8.2 for safety rules.
 5. **`.npmrc`** with `force=true` created (Section 8.3.2)
 6. **`.claude/settings.json`** created with bypass permissions configuration and hooks enforcement (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
 7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
@@ -635,129 +636,179 @@ All schema changes — tables, columns, RLS policies, functions, triggers — mu
 
 If a dashboard modification is made during development for testing purposes, it must be captured in a migration file before the change is considered complete. The freeze audit verifies that migration files match the current live schema state.
 
-### 8.8 Setup Guides (`docs/resources/`)
-Every external service, platform, API, or tool in the project's tech stack must have a corresponding setup guide in the `docs/resources/` folder. These guides document **only the manual steps the human must perform** — anything Claude Code can automate during the build is omitted.
+### 8.8 Setup Guides and Service Automation (`docs/resources/`)
+Every external service in the project's tech stack must have a corresponding setup guide in `docs/resources/`. The automation-first principle applies: **Claude Code automates everything it can via CLI/MCP tools. Setup guides document only the irreducible human-only steps.**
 
-#### 8.8.1 Purpose and Audience
-Setup guides are written for a technical but not expert audience — someone who can follow step-by-step instructions but may not have used the specific tool before. They answer: "What do I need to do by hand to get this service ready for the build?"
+#### 8.8.1 Three-Category Model
+Every setup guide uses exactly three categories:
 
-#### 8.8.2 Two-Section Structure
-Every setup guide must be split into exactly two sections:
+**Category 1: Human-Only Setup (Before Claude Code Starts)**
+The irreducible minimum that requires a human in a browser. These are steps Claude Code physically cannot perform.
 
-**Section 1: Pre-Build (Before Claude Code Starts)**
-Manual steps the human must complete before the build begins. These are things Claude Code cannot do — account creation, billing setup, OAuth app registration, clicking through dashboards, enabling features that require human authorization.
+Typical human-only steps:
+- Create an account on the service (with direct signup link)
+- Create a new project/app in the service's dashboard
+- Accept terms of service or billing agreements
+- Copy base credentials (URL, API keys, tokens) into `.env`
 
-Focus on:
-- Account creation and signup (with direct links)
-- Project/app creation in the service's dashboard
-- Enabling features that require manual authorization (e.g., enabling Realtime in Supabase, creating a Discord application)
-- Generating API keys and credentials (instructions only — never include actual values)
-- Configuring OAuth redirect URLs
-- Any approval processes or waitlists
-- Populating `.env` with the values obtained (reference `.env.example` for the variable names)
+**Category 2: Automated Setup (Claude Code Executes via CLI/MCP)**
+Everything that can be done programmatically. Claude Code executes these steps during the build using CLI tools or MCP servers. The setup guide documents what will be automated (for transparency) but the human does not need to do these steps.
 
-**Section 2: Post-Build (After Scaffolding Completes)**
-Manual steps that remain after Claude Code has finished building. These are configuration steps that depend on the built application or require human verification in external dashboards.
+Typical automated steps (Supabase via MCP/CLI):
+- Create database tables and apply schema
+- Enable auth providers (Discord, Google, etc.)
+- Configure OAuth redirect URLs
+- Apply RLS policies and GRANTs
+- Deploy Edge Functions
+- Configure storage buckets
+- Generate TypeScript types
 
-Focus on:
-- Deployment-specific configuration (e.g., setting environment variables in Railway dashboard)
-- DNS/domain configuration
-- Enabling production features (e.g., switching from Supabase free tier to Pro, enabling PITR)
-- Verification steps — how to confirm the integration is working end-to-end
-- Connecting services that require the deployed application URL (e.g., webhook endpoints)
-- Any manual testing or approval steps
+Typical automated steps (Railway via CLI):
+- Create project and link to GitHub repo
+- Set environment variables
+- Configure deployment settings
 
-**What to exclude from both sections:**
-- Anything Claude Code handles during the build (schema creation, RLS policies, Edge Function deployment, code generation, dependency installation)
+**Category 3: Human-Only Refinement (Post-Build, Production Hardening)**
+Configuration that depends on the deployed application or requires human judgment for production readiness.
+
+Typical refinement steps:
+- Custom domain/DNS configuration
+- Upgrade to production tier (Supabase Pro, PITR)
+- Configure production rate limits
+- Set up monitoring/alerting thresholds
+- Security review of auth provider settings
+- Webhook endpoint configuration (requires deployed URL)
+
+**What to exclude from all categories:**
 - Generic documentation about what the tool does (link to official docs instead)
-- Actual API keys, secrets, tokens, passwords, or credentials — use placeholders like `your-api-key-here` or `<SUPABASE_ANON_KEY>` and reference `.env.example`
+- Actual API keys, secrets, tokens, passwords, or credentials -- use placeholders and reference `.env.example`
 
-#### 8.8.3 Required Guide Sections
-Each setup guide should include these sections where applicable. Mark sections "N/A" if genuinely irrelevant to the specific tool.
+#### 8.8.2 MCP/CLI Service Integration (Automation Layer)
+
+For services with CLI or MCP support, Claude Code connects directly and executes automated setup steps during the build. This eliminates the majority of manual dashboard configuration.
+
+**Project Safety Rules (Critical):**
+- **Always scope to a NEW project.** MCP servers and CLI tools must be connected to the project being built, never to existing projects with production data. The setup guide's Category 1 step is "create a NEW project" -- not "use existing project."
+- **Project scoping is mandatory.** When configuring MCP servers, always include the project reference/ID to restrict access to a single project. Never leave MCP servers unscoped (which gives access to all projects in the account).
+- **Verify project target before write operations.** Before Claude Code runs any schema-modifying command (create table, apply migration, deploy function), it must confirm the target project matches the project being built. If there's any ambiguity, stop and ask.
+- **No production connections.** MCP servers for database services (Supabase, Firebase, etc.) must never be connected to production databases. Development/staging only.
+- **Read-only when exploring.** When Claude Code needs to inspect an existing project for reference (e.g., to understand an existing schema), use read-only mode if the CLI/MCP supports it.
+
+**Supported Service Integrations:**
+
+**Supabase MCP** (recommended for all Supabase projects):
+```
+claude mcp add supabase --transport http "https://mcp.supabase.com/mcp?project_ref=<YOUR_PROJECT_REF>"
+```
+Replace `<YOUR_PROJECT_REF>` with the project ID from your Supabase dashboard (Settings > Project ID). This scopes the MCP server to your specific new project. After adding, Claude Code authenticates via browser OAuth -- no API keys in config files.
+
+Capabilities: Create tables, run SQL, manage schema, enable auth providers, configure storage, deploy Edge Functions, generate types, query data.
+
+**Supabase CLI** (alternative to MCP, or for local development):
+```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref <YOUR_PROJECT_REF>
+```
+
+**Railway CLI** (for deployment):
+```bash
+npm install -g @railway/cli
+railway login
+railway link
+```
+
+**Service-specific MCP/CLI installation is documented in each project's setup guide** and configured in `.mcp.json` in the project root. The scaffolding checklist (Section 7) includes MCP configuration as a step.
+
+#### 8.8.3 Required Guide Template
 
 ```markdown
 # [Tool Name] Setup Guide
 
-## Pre-Build Setup (Do This Before Starting the Build)
+## Category 1: Human-Only Setup (Do This Before the Build)
 
 ### Account and Project Creation
-[Steps to create account and project/app in the service]
+[Steps to create account and NEW project/app in the service]
+[IMPORTANT: Create a NEW project -- do not reuse an existing one]
 
-### Configuration
-[Service-specific settings that must be configured manually]
+### Credentials for .env
+[How to find the required API keys and tokens]
+[Reference .env.example for variable names -- NEVER include actual values]
 
-### Credentials
-[How to generate/find the required API keys and tokens]
-[Reference .env.example for variable names — NEVER include actual values]
+## Category 2: Automated Setup (Claude Code Handles This)
 
-### Integration Points
-[Where values from this tool need to be entered in other tools]
-[e.g., "Copy the Supabase URL and anon key into your .env file"]
+### What Gets Automated
+[List of steps Claude Code will execute via CLI/MCP during the build]
+[The human does NOT need to do these -- they are listed for transparency]
 
-## Post-Build Setup (Do This After the Build Completes)
+### MCP/CLI Configuration
+[How to connect the CLI or MCP server, scoped to this project]
 
-### Deployment Configuration
-[Steps that require the built/deployed application]
+## Category 3: Post-Build Refinement (Do This After the Build)
+
+### Production Hardening
+[Steps that require the deployed application or human judgment]
 
 ### Verification
 [How to confirm the integration is working end-to-end]
-
-### Troubleshooting
-[Known issues and their solutions]
 ```
 
 #### 8.8.4 Identifying Tools That Need Guides
-Any external service the project depends on requires a setup guide. Common categories:
-- Hosting/deployment platforms (Railway, Vercel, Netlify, etc.)
-- Backend-as-a-service (Supabase, Firebase, etc.)
-- Authentication providers (Discord OAuth, Clerk, Google, Auth0, etc.)
-- AI/LLM APIs (Anthropic, OpenAI, etc.)
-- Source control platforms (GitHub, GitLab, etc.)
-- Email services (SendGrid, Resend, etc.)
-- Payment processors (Stripe, Clerk Billing, etc.)
-- Analytics/observability (PostHog, Sentry, etc.)
-- Domain/DNS providers
-- Any other external API or service
+Any external service the project depends on requires a setup guide. Common categories: hosting/deployment (Railway, Vercel), backend-as-a-service (Supabase, Firebase), auth providers (Discord OAuth, Clerk), AI/LLM APIs (Anthropic, OpenAI), source control (GitHub), email (SendGrid, Resend), payments (Stripe, Clerk Billing), analytics/observability (PostHog, Sentry), domain/DNS providers.
 
 #### 8.8.5 Generation Timing
 - **During the kickoff prompt process:** The PRD identifies all external tools and includes a setup guide inventory table.
-- **Before the build starts:** Claude Code generates skeleton setup guides with the Pre-Build sections populated. The human completes the pre-build manual steps before scaffolding begins.
-- **During/after scaffolding:** Claude Code appends the Post-Build sections based on what was actually built — specific Edge Function names, actual redirect URLs, deployment verification steps.
-- **Before the freeze audit:** All setup guides must be complete and verified.
+- **Before the build starts:** Claude Code generates setup guides with Category 1 (human-only) steps and Category 2 (automated) steps documented. The human completes Category 1 steps. Claude Code configures MCP/CLI connections for services that support automation.
+- **During the build:** Claude Code executes Category 2 (automated) steps via CLI/MCP as part of the build process -- schema creation, auth provider configuration, deployment setup.
+- **After the build:** Claude Code populates Category 3 (refinement) sections. The human completes production hardening steps.
+- **Before the freeze audit:** All setup guides must be complete across all three categories.
 
 #### 8.8.6 `docs/resources/README.md` (Index File)
-Every project must include an index file listing all setup guides:
 
 ```markdown
-# Project Resources — Setup Guides
+# Project Resources -- Setup Guides
 
 Setup guides for every external service used by this project.
-Each guide contains only the manual steps you need to perform.
+Guides follow the three-category model: human-only setup,
+automated setup (Claude Code handles via CLI/MCP), and
+post-build refinement.
 
-**IMPORTANT: No guide in this folder contains actual API keys,
-secrets, or credentials. All sensitive values go in .env
-(see .env.example in the project root).**
+**IMPORTANT: No guide contains actual API keys or secrets.
+All sensitive values go in .env (see .env.example).**
 
-## Pre-Build Checklist
-Complete the Pre-Build section of each guide before starting the build:
+**IMPORTANT: All MCP/CLI tools are scoped to a NEW project.
+Never connect to existing projects with production data.**
 
-| Guide | Tool | Pre-Build Done? |
-|---|---|---|
-| [tool]-setup-guide.md | [Tool Name] | [ ] |
+## Category 1: Human-Only Setup Checklist
+Complete these steps before starting the build:
 
-## Post-Build Checklist
-Complete the Post-Build section of each guide after the build finishes:
+| Guide | Tool | Account Created? | Project Created? | .env Populated? |
+|---|---|---|---|---|
+| [tool]-setup-guide.md | [Tool Name] | [ ] | [ ] | [ ] |
 
-| Guide | Tool | Post-Build Done? |
-|---|---|---|
-| [tool]-setup-guide.md | [Tool Name] | [ ] |
+## Category 2: Automated Setup
+These steps are executed by Claude Code during the build via CLI/MCP.
+No human action required -- listed for transparency.
+
+| Guide | Tool | MCP/CLI Connected? | Automation Scope |
+|---|---|---|---|
+| [tool]-setup-guide.md | [Tool Name] | [ ] | [What gets automated] |
+
+## Category 3: Post-Build Refinement Checklist
+Complete these steps after the build finishes:
+
+| Guide | Tool | Production Hardening Done? | Verified? |
+|---|---|---|---|
+| [tool]-setup-guide.md | [Tool Name] | [ ] | [ ] |
 ```
 
 #### 8.8.7 Security Rules for Setup Guides
 - **NEVER** include actual API keys, secrets, tokens, passwords, or credentials in any setup guide
 - Use placeholders (`your-api-key-here`, `<VARIABLE_NAME>`) and reference `.env.example`
-- Setup guides are committed to Git — treat them as public documents
-- Cross-reference between guides when setup steps span multiple tools (e.g., "See the Supabase setup guide for where to find this value")
+- Setup guides are committed to Git -- treat them as public documents
+- **All MCP/CLI connections must be scoped to the specific new project being built**
+- **Never connect MCP servers to production databases or existing projects with live data**
+- Cross-reference between guides when setup steps span multiple tools
 
 ---
 
@@ -2053,6 +2104,13 @@ Fetches real-time, version-specific library documentation. Prevents outdated API
 ```
 Anthropic's official skill for distinctive, production-grade frontend interfaces. Auto-activates during UI work.
 
+**Service MCP Servers** (configured per project based on stack):
+For services with MCP support, Claude Code connects directly and executes automated setup (Category 2 steps from Section 8.8). Example for Supabase:
+```
+claude mcp add supabase --transport http "https://mcp.supabase.com/mcp?project_ref=<YOUR_PROJECT_REF>"
+```
+**Safety: Always scope MCP servers to the specific new project being built. Never leave unscoped. Never connect to production.** See Section 8.8.2 for full safety rules.
+
 **Hooks** (mandatory):
 The `.claude/hooks/pre_tool_use.py` safety layer runs regardless of framework. See Section 20.5.
 
@@ -2073,7 +2131,7 @@ Skills auto-trigger based on intent (slash commands are deprecated as of v5.0). 
 - **Debugging:** Systematic-debugging provides 4-phase root cause analysis for complex problems.
 
 **What this framework adds on top of Superpowers:**
-Setup guide generation (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 69-item freeze audit, security architecture, auth patterns, lessons learned, hooks safety layer, component architecture rules, deployment discipline.
+Setup guide generation (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 70-item freeze audit, security architecture, auth patterns, lessons learned, hooks safety layer, component architecture rules, deployment discipline.
 
 #### 20.9.3 GSD (Get Shit Done) — For Experimental/MVP Projects
 
@@ -2128,7 +2186,7 @@ Before production readiness, Claude must confirm:
 
 - [ ] Architecture matches approved plan
 - [ ] All PRD open questions resolved before build began — no unresolved items in PRD Section 17
-- [ ] Pre-Build checklist confirmed complete by human before coding started — all setup guides in `docs/resources/` had Pre-Build sections done, `.env` verified against `.env.example`
+- [ ] Category 1 (human-only) setup confirmed complete by human before coding started -- accounts created, new projects created, `.env` populated, verified against `.env.example`
 - [ ] Authorization boundaries enforced at data layer
 - [ ] Table-level GRANTs applied to all public tables with RLS (anon + authenticated roles)
 - [ ] First-login RLS policies handle unlinked auth_user_id state (Discord OAuth fallback — skip if using Clerk)
@@ -2174,10 +2232,11 @@ Before production readiness, Claude must confirm:
 - [ ] `.env.example` exists, is committed, and documents all required variables with grouping, descriptions, and source instructions (per Section 8.3.1)
 - [ ] `.env.example` is in sync with actual environment variable usage — no missing or stale entries
 - [ ] Setup guide exists in `docs/resources/` for every external service in the tech stack (per Section 8.8)
-- [ ] No setup guide contains actual API keys, secrets, or credentials — only placeholders
-- [ ] All setup guides have both Pre-Build and Post-Build sections completed
+- [ ] No setup guide contains actual API keys, secrets, or credentials -- only placeholders
+- [ ] All setup guides have all three categories completed (human-only, automated, post-build refinement)
+- [ ] All MCP/CLI service connections scoped to the specific new project -- no unscoped or production connections
 - [ ] All setup guides cross-reference related guides where setup spans multiple tools
-- [ ] `docs/resources/README.md` index exists with pre-build and post-build checklists
+- [ ] `docs/resources/README.md` index exists with Category 1, 2, and 3 checklists
 - [ ] Migration files match current schema state
 - [ ] No schema drift — no direct dashboard modifications to production RLS, functions, or triggers (per Section 8.7)
 - [ ] Database backup tier declared in PRD — PITR flagged as recommended for production user-facing apps (per Section 8.5)
@@ -2245,7 +2304,7 @@ Do not modify `CLAUDE.md`, `prd.md`, or any workflow/documentation file without 
 ## 22.6 Stop and Ask Triggers
 Claude must pause and request clarification when encountering ambiguity around:
 - Unresolved open questions in PRD Section 17 (hard gate — do not proceed until all are resolved)
-- Pre-Build checklist not confirmed complete (hard gate — do not start coding until human confirms all setup guides done and `.env` verified)
+- Pre-Build checklist not confirmed complete (hard gate -- do not start coding until human confirms all Category 1 setup steps done and `.env` verified)
 - Tenancy model choice
 - Roles and permission boundaries
 - Ownership rules (who can create, edit, delete what)
@@ -2277,10 +2336,11 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 2.0 |
+| Version | 2.1 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
+| Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. MCP configuration added to scaffolding checklist. Freeze audit updated for three-category model and MCP safety verification. |
 | Changes from v1.5 | **v2.0 - Multi-Framework Orchestration.** Transformed from a single-framework system into a governing build contract that auto-selects the right development framework based on project requirements. Section 20.9 rewritten as Development Framework Selection and Integration with support for Superpowers (default, production builds), GSD (experimental/MVP builds), and BMAD (enterprise/compliance builds). Kickoff prompt now detects both build complexity (Express/Full) and requirements clarity to recommend the optimal framework. Framework-conditional rules: setup guides, pre-build gates, STATE.md, CONTEXT.md, and freeze audit scope adjust based on selected framework. Common infrastructure (Context7, Frontend Design, hooks) applies to all frameworks. |
 | Changes from v1.4 | Added: Superpowers plugin integration with corrected install method. Context7 plugin. Frontend Design plugin. Bypass permissions + hooks as permission configuration. Open Questions Resolution Phase as mandatory hard gate. Pre-Build Setup hard gate. Custom subagents with `context: fork` and `agent:` type frontmatter. |
 | Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7). Discuss Phase via CONTEXT.md (Section 20.8). Fresh Context Execution Pattern (Section 20.3.2.1). Expanded Freeze Audit Checklist (67 items). |

@@ -262,14 +262,14 @@ This section must be completed before planning begins. Values here override `cla
 - *(Required for SEO/crawl policy scoping per claude.md Section 19)*
 
 ### Setup Guide Inventory *(per `claude.md` Section 8.8)*
-Every external service in the tech stack requires a setup guide in `docs/resources/`. List all tools below. Claude Code generates the guides; the human completes the manual steps.
+Every external service requires a setup guide using the three-category model. Claude Code automates Category 2 steps via CLI/MCP; humans handle only Category 1 (account/project creation) and Category 3 (production hardening).
 
-| Tool | Guide Filename | Purpose in This Project | Pre-Build Manual Steps? |
-|---|---|---|---|
-| `<<TOOL>>` | `<<tool>>-setup-guide.md` | `<<PURPOSE>>` | Yes / No |
+| Tool | Guide Filename | Purpose | Cat 1 Human Steps? | Cat 2 MCP/CLI Available? |
+|---|---|---|---|---|
+| `<<TOOL>>` | `<<tool>>-setup-guide.md` | `<<PURPOSE>>` | Yes / No | Yes (MCP) / Yes (CLI) / No |
 | `<<TOOL>>` | `<<tool>>-setup-guide.md` | `<<PURPOSE>>` | Yes / No |
 
-Guides contain only manual steps the human must perform — anything Claude Code automates is omitted. No guide may contain actual API keys, secrets, or credentials. See `claude.md` Section 8.8 for the required two-section structure (Pre-Build and Post-Build).
+Guides follow the three-category model (human-only setup, automated via CLI/MCP, post-build refinement). No guide may contain actual API keys, secrets, or credentials. See `claude.md` Section 8.8 for the required structure.
 
 ---
 
@@ -417,7 +417,7 @@ List all environment variables the application requires. No hardcoded secrets in
 - Custom subagents recommended for Full Build — create security-reviewer.md, component-checker.md, test-coverage.md in `.claude/agents/` (per `claude.md` Section 20.3.3)
 - Plan must identify both phase-level (Agent Teams) and task-level (subagents) parallelism opportunities (per `claude.md` Section 20.3.4)
 - Hook enforcement scripts should be created during project scaffolding — at minimum `pre_tool_use.py` guardrails (per `claude.md` Section 20.5)
-- Setup guides must be generated in `docs/resources/` for every external service — Pre-Build sections populated before build starts, Post-Build sections appended after scaffolding (per `claude.md` Section 8.8)
+- Setup guides must use three-category model: Category 1 (human-only), Category 2 (automated via CLI/MCP), Category 3 (post-build refinement) per `claude.md` Section 8.8. All MCP/CLI connections must be scoped to the new project being built.
 - Claude Code must self-audit against PRD acceptance criteria before declaring any phase complete — two-pass verification loop (per `claude.md` Section 20.1)
 - `STATE.md` must be maintained as the authoritative record of build progress — updated at every phase gate (per `claude.md` Section 20.7)
 - Discuss Phase must be conducted before coding to capture implementation decisions in `CONTEXT.md` — mandatory for UI phases (per `claude.md` Section 20.8)
@@ -515,7 +515,7 @@ Claude Code builds the full application in one pass, following this priority ord
 - `<<CRITERION>>`
 
 #### Step 3: Verify and Harden
-**Post-build setup:** Claude Code appends Post-Build sections to each setup guide in `docs/resources/`. The human completes all post-build manual steps (deployment config, DNS, verification).
+**Post-build refinement:** Claude Code populates Category 3 (refinement) sections in each setup guide. The human completes production hardening steps (DNS, tier upgrades, security review).
 
 **Manual verification:**
 - `<<VERIFICATION_STEP>>`
