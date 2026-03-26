@@ -17,30 +17,22 @@ Your job is to produce the following deliverables, each as a separate downloadab
 
 ---
 
-## Build Mode Detection
+## Build Mode and Framework Detection
 
-Before producing any files, assess the project complexity from the context provided and select one of two build modes. **State your selection and reasoning at the top of your response** so I can override before you produce files, or confirm and proceed.
+Before producing any files, assess the project from two dimensions: **build complexity** and **requirements clarity**. State both selections and your reasoning at the top of your response so I can override before you produce files.
 
-### Express Build
-Use when the project meets **all** of these criteria:
+### Dimension 1: Build Complexity
+
+**Express Build** — Use when the project meets **all** of these criteria:
 - Single-tenant or no tenancy model needed
 - 5 or fewer database tables / data entities
-- 1–2 user roles (or single-role / no auth complexity)
+- 1-2 user roles (or single-role / no auth complexity)
 - No complex calculation engine
 - No multi-system integrations
 - Straightforward CRUD workflows
 - Could reasonably be built to near-production in one focused session
 
-**Express Build behavior:**
-- The project-specific `claude.md` is significantly condensed — principles and constraints only, no multi-phase ceremony
-- The PRD is streamlined — key sections filled in, ceremony sections collapsed
-- **No phased execution plan.** Instead, Claude Code gets a single prioritized build sequence with a verification checklist at the end
-- Claude Code is instructed to **build toward production-ready in one pass**, then pause for review before any final polish
-- The freeze audit checklist is still required but trimmed to what applies
-- Security, error handling, debug mode, and code hygiene rules still apply in full — Express Build is about reducing process overhead, never about cutting safety corners
-
-### Full Build
-Use when **any** of these are true:
+**Full Build** — Use when **any** of these are true:
 - Multi-tenant architecture
 - 6+ database tables / data entities
 - 3+ user roles with distinct permission boundaries
@@ -50,14 +42,53 @@ Use when **any** of these are true:
 - Compliance or audit requirements
 - The project owner explicitly requests phased execution
 
-**Full Build behavior:**
-- Project-specific `claude.md` retains full phase structure (trimmed to relevant phases)
-- PRD uses all applicable sections with full milestone breakdown
-- Claude Code operates in plan-only → phased execution → verification gate flow
-- Each phase requires approval before proceeding
+### Dimension 2: Development Framework Selection
+
+Based on the project context, select the development framework that will handle the build process. This framework runs underneath our governing build contract (`claude.md`), which always provides security architecture, lessons learned, hooks safety, and production readiness regardless of which framework is selected.
+
+**Superpowers** (default) — Use when:
+- Requirements are generally clear and the product vision is defined
+- The project needs structured brainstorming, planning, and two-stage code review
+- Quality and correctness matter more than speed of discovery
+- The project is a production application (not a throwaway prototype)
+- You're not sure which framework to pick (Superpowers is the safest default)
+
+What Superpowers provides: Structured brainstorming with formal spec review, implementation planning with bite-sized tasks, subagent-driven execution with two-stage review (spec compliance then code quality), verification-before-completion, systematic debugging. Our discuss phase adds a supplemental UI/UX pass for GUI and user journey decisions.
+
+What our framework adds on top: Setup guide generation for all third-party services (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution phase, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 69-item freeze audit, and all security/auth/deployment rules.
+
+**GSD (Get Shit Done)** — Use when:
+- Requirements are unclear, experimental, or expected to change significantly
+- The project is an MVP or prototype where discovering the product is part of the build
+- You need to iterate fast without being locked into later phases
+- The project hasn't been built before and requires experimentation at each step
+- Speed of delivery matters more than formal documentation
+
+What GSD provides: Lightweight project spec, phase-by-phase incremental planning (not pre-planned), parallel research agents, adversarial plan verification, atomic git commits per task, context rot prevention via aggressive atomicity, its own state management (`.planning/`).
+
+What our framework adds on top: Security architecture (RLS, auth patterns, JWT handling), lessons learned patterns, hooks safety layer, Context7 for live docs, Frontend Design for visual quality. **Setup guides, pre-build hard gates, open questions resolution, STATE.md, and CONTEXT.md are NOT used with GSD** — GSD has its own initialization, discuss, and state tracking systems. The freeze audit is replaced with a lighter MVP readiness checklist.
+
+**BMAD (Breakthrough Method for Agile AI-Driven Development)** — Use when:
+- Requirements are locked and comprehensive documentation is a deliverable
+- The project has compliance, audit, or regulatory requirements
+- You want formal role-based workflows (Business Analyst, Product Manager, Architect, Scrum Master, Developer, QA)
+- The project is enterprise-grade or being built for a client
+- Documentation traceability (requirements to stories to code to tests) is required
+
+What BMAD provides: 9 specialized agents simulating a full agile team, formal PRD and architecture document creation, epic and story generation, story-by-story implementation with QA review, audit-grade documentation chains, expansion packs for specialized domains.
+
+What our framework adds on top: Security architecture, lessons learned patterns, hooks safety layer, setup guide generation, `.env` verification, Context7 for live docs, Frontend Design for visual quality, full freeze audit. **STATE.md and CONTEXT.md are NOT used with BMAD** — BMAD has its own state tracking (`bmad/`) and workflow documentation.
 
 ### Override
-If I specify a build mode in the project context (e.g., "this is a quick build" or "I want full phased execution"), use that regardless of the complexity assessment.
+If I specify a build mode or framework in the project context (e.g., "this is a quick build," "use GSD," or "I want full phased execution with BMAD"), use that regardless of the assessment.
+
+### Selection Matrix (Quick Reference)
+
+| Requirements | Simple Project | Complex Project |
+|---|---|---|
+| **Clear, stable** | Superpowers + Express | Superpowers + Full Build |
+| **Unclear, experimental** | GSD + Express | GSD + Full Build |
+| **Locked, compliance-grade** | Superpowers + Express | BMAD + Full Build |
 
 ---
 
@@ -96,13 +127,35 @@ If **Full Build**:
 
 - If the project uses **Express Build**, remove the Agent Teams subsection (20.3.1 in master) and the Custom Subagents subsection (20.3.3) — Agent Teams and custom subagents only apply to Full Build. Keep the Subagents via Task Tool subsection (20.3.2) as subagents are available in any build mode.
 
+**Framework-specific adjustments:**
+
+If **Superpowers** (default):
+- Keep Section 20.9 with Superpowers integration details.
+- Keep setup guide generation (Section 8.8), pre-build hard gate, open questions resolution, STATE.md, CONTEXT.md, and discuss phase.
+- Install instructions: `/plugin install superpowers@claude-plugins-official`
+
+If **GSD**:
+- Replace Section 20.9 with GSD integration details. Remove Superpowers-specific subsections.
+- **Remove:** Setup guide generation (Section 8.8), pre-build hard gate (item 3 in scaffolding checklist), open questions resolution phase, STATE.md (Section 20.7), CONTEXT.md and discuss phase (Section 20.8). GSD has its own initialization, discuss, research, planning, and state tracking systems that replace these.
+- **Keep:** Security architecture, auth patterns, lessons learned, hooks, `.env.example` (simplified), code hygiene rules, component architecture, Context7, Frontend Design.
+- **Replace freeze audit** with a lighter MVP readiness checklist focused on: security basics, auth working, error handling, no hardcoded secrets, git clean, basic manual testing.
+- Install instructions: `npx get-shit-done-cc --claude --local`
+- The kickoff prompt for Claude Code should instruct it to use `/gsd:new-project` to initialize instead of the standard plan-first flow.
+
+If **BMAD**:
+- Replace Section 20.9 with BMAD integration details. Remove Superpowers-specific subsections.
+- **Remove:** STATE.md (Section 20.7), CONTEXT.md and discuss phase (Section 20.8). BMAD has its own state tracking and workflow documentation.
+- **Keep:** Setup guide generation (Section 8.8), pre-build hard gate, security architecture, auth patterns, lessons learned, hooks, `.env.example`, code hygiene rules, freeze audit (full), Context7, Frontend Design.
+- Install instructions: `npx bmad-method install`
+- The kickoff prompt for Claude Code should instruct it to initialize BMAD and follow its agent-guided workflow while respecting `CLAUDE.md` security and production rules.
+
 **What to adjust:**
 - Update the Default Technology Stack table (Section 2) to reflect this project's actual stack.
 - Update the Pre-Approved Dependencies list to match the actual framework and libraries.
 - Update the Environment Variables guidance to match the actual services.
 - Update the Freeze Audit Checklist — remove items that don't apply to this project, keep everything that does.
 
-**What to never remove regardless of project or build mode:**
+**What to never remove regardless of project, build mode, or framework:**
 - Plan-first discipline (even Express Build requires plan confirmation before coding)
 - Security > velocity principle
 - Deterministic over probabilistic principle
@@ -115,22 +168,24 @@ If **Full Build**:
 - Component architecture and decomposition rules (Section 17.2)
 - Feature extraction protocol (Section 17.3)
 - Data safety during development and testing (never delete production data)
-- Phase gate rule (compaction-proof — must be in CLAUDE.md, not just conversation)
-- Self-audit verification loop before declaring phases complete
-- `STATE.md` persistent build state (Section 20.7)
-- Discuss Phase for implementation decisions before coding (Section 20.8)
-- Superpowers plugin integration (Section 20.9)
-- Pre-build scaffolding checklist (plugins, setup guides, hooks, agents)
 - Code hygiene rules
 - Reuse over recreation and documentation integrity
 - Mid-build error recovery protocol
-- Pre-branch checklist (for ongoing development)
-- Hook enforcement (pre_tool_use guardrails at minimum — Section 20.5)
-- Setup guide generation for all external services (Section 8.8)
-- Freeze audit checklist (trimmed to relevant items)
+- Hook enforcement (pre_tool_use guardrails at minimum -- Section 20.5)
+- Freeze audit checklist (full for Superpowers/BMAD, lighter MVP checklist for GSD)
 - The versioning table at the end
 
-**Versioning:** Set the version to `1.5-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v1.5, listing the build mode selected and a summary of what was removed or simplified.
+**Additional items to keep for Superpowers and BMAD (remove for GSD):**
+- Phase gate rule (compaction-proof -- must be in CLAUDE.md, not just conversation)
+- Self-audit verification loop before declaring phases complete
+- `STATE.md` persistent build state (Section 20.7) -- Superpowers only (BMAD uses its own state)
+- Discuss Phase for implementation decisions before coding (Section 20.8) -- Superpowers only (BMAD uses its own workflow)
+- Development framework integration (Section 20.9)
+- Pre-build scaffolding checklist (plugins, setup guides, hooks, agents)
+- Setup guide generation for all external services (Section 8.8)
+- Pre-branch checklist (for ongoing development)
+
+**Versioning:** Set the version to `2.0-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.0, listing the build mode selected, the development framework selected, and a summary of what was removed or simplified.
 
 ---
 
@@ -167,25 +222,26 @@ Generate a ready-to-paste prompt for Claude Code that:
 
 **If Express Build:**
 - Tells Claude Code to produce a plan (architecture summary, data model, auth approach, screen/route list, assumptions, open questions) and **wait for approval**
-- Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The human completes the pre-build manual steps before approving the build to proceed.
-- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7), run Superpowers brainstorming for general design exploration and spec validation (per `claude.md` Section 20.9), then conduct the Discuss Phase as a supplemental UI/UX pass to capture GUI and user journey decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for any project with UI.
-- Once approved, pre-build steps complete, and implementation decisions captured, instructs Claude Code to **build the full application in one pass** following the priority order in the plan, without stopping for per-phase approval. For larger Express builds, recommend using fresh context execution via subagents (per `claude.md` Section 20.3.2.1) to prevent context degradation.
-- **Reminds Claude Code of the pre-build hard gate:** before starting the build, Claude Code must present the Pre-Build checklist from `docs/resources/README.md`, ask the human to confirm each item is complete, and verify `.env` contains values for every variable in `.env.example`. Do not start coding until the human confirms.
-- After the build pass, instructs Claude Code to update `STATE.md`, append Post-Build sections to each setup guide with any remaining manual steps, then pause and present the freeze audit checklist results for review
+- Installs the selected development framework and common plugins (per `claude.md` Section 20.9)
+- **If Superpowers:** Generates setup guides, runs brainstorming + discuss phase, creates STATE.md and CONTEXT.md, presents pre-build hard gate for human confirmation, verifies `.env`
+- **If GSD:** Runs `/gsd:new-project` for initialization. GSD handles its own discuss, research, and planning. Skip setup guides, STATE.md, CONTEXT.md, and pre-build hard gate.
+- **If BMAD:** Runs BMAD initialization and agent-guided workflow. Generates setup guides, presents pre-build hard gate, verifies `.env`.
+- Once approved and pre-build complete, instructs Claude Code to **build the full application in one pass** following the priority order in the plan
+- After the build pass, presents the freeze audit checklist (full for Superpowers/BMAD, MVP readiness for GSD)
 - Reminds Claude Code that even in Express mode, it must stop and ask if it encounters ambiguity on any stop-and-ask trigger
-- Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows → Railway/Linux cross-platform deploy)
-- Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding, with grouped sections, placeholder values, descriptions, source instructions, and client-safe vs. server-only warnings (per `claude.md` Section 8.3.1)
+- Reminds Claude Code to create `.npmrc` with `force=true` in project root before running `npm install` (required for Windows to Railway/Linux cross-platform deploy)
+- Reminds Claude Code to generate `.env.example` from the PRD's environment variables table during project scaffolding (per `claude.md` Section 8.3.1)
 - Reminds Claude Code to create `.claude/settings.json` with bypass permissions and hooks enforcement during scaffolding (per `claude.md` Section 20.6).
 
 **If Full Build:**
 - Tells Claude Code to operate in **plan-only mode** — no code until the plan is approved
 - Asks Claude Code to produce the full plan output (architecture, data model, authorization, permissions, screens, calculations if applicable, phased execution plan)
-- Tells Claude Code to generate setup guides in `docs/resources/` with Pre-Build sections populated for every external service in the tech stack (per `claude.md` Section 8.8). The plan must identify which pre-build manual steps block which build phases.
-- **Reminds Claude Code of the pre-build hard gate:** before starting Phase 1, Claude Code must present the Pre-Build checklist from `docs/resources/README.md`, ask the human to confirm each item is complete, and verify `.env` contains values for every variable in `.env.example`. Do not start coding until the human confirms.
-- Tells Claude Code to create `STATE.md` with initial build state (per `claude.md` Section 20.7), run Superpowers brainstorming for general design exploration and spec validation (per `claude.md` Section 20.9), then conduct the Discuss Phase as a supplemental UI/UX pass to capture GUI and user journey decisions in `CONTEXT.md` (per `claude.md` Section 20.8) — mandatory for phases with UI, recommended for all phases.
-- Reminds Claude Code of per-phase verification gates and that `STATE.md` must be updated at every phase transition
-- Instructs Claude Code to use Superpowers' subagent-driven-development for task execution with two-stage review (spec compliance then code quality) per `claude.md` Section 20.9, combined with fresh context execution via subagents for phases with 3+ implementation tasks (per `claude.md` Section 20.3.2.1)
-- After the final build phase, instructs Claude Code to append Post-Build sections to each setup guide with any remaining manual steps
+- Installs the selected development framework and common plugins (per `claude.md` Section 20.9)
+- **If Superpowers:** Generates setup guides with Pre-Build sections, runs brainstorming + discuss phase, creates STATE.md and CONTEXT.md, presents pre-build hard gate, verifies `.env`. Uses subagent-driven-development with two-stage review for task execution. Updates STATE.md at every phase transition.
+- **If GSD:** Runs `/gsd:new-project` for initialization. GSD handles its own discuss, research, planning, and phase-by-phase execution with adversarial plan verification. Skip setup guides, STATE.md, CONTEXT.md, and pre-build hard gate. GSD uses atomic git commits per task.
+- **If BMAD:** Runs BMAD initialization and follows the full agent-guided workflow (Business Analyst, Product Manager, Architect, Scrum Master, Developer, QA). Generates setup guides, presents pre-build hard gate, verifies `.env`. BMAD manages story-by-story execution with QA review.
+- Reminds Claude Code of per-phase verification gates (Superpowers/BMAD) or GSD's built-in plan verification
+- After the final build phase, presents the freeze audit or MVP readiness checklist
 
 **Agent Teams (Full Build only):**
 If the project uses Full Build mode and the plan contains phases with independent, parallelizable work (e.g., separate modules, frontend + backend + tests), the kickoff prompt should:

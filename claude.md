@@ -33,6 +33,7 @@ Every new project must declare the following before any planning begins. The PRD
 | Observability | None / PostHog / Sentry / Other (see Section 13.3) |
 | Repository | GitHub (required) |
 | Build Mode | Express Build / Full Build (see Section 1.5) |
+| Development Framework | Superpowers / GSD / BMAD (see Section 20.9) |
 
 If any field is unresolved, it is an open question that must be answered before Phase 0 completes. All open questions from PRD Section 17 must be resolved during the kickoff conversation — Claude Code must verify zero unresolved items before beginning the plan.
 
@@ -482,11 +483,12 @@ Before any application code is written, the following must be completed:
 6. **`.claude/settings.json`** created with bypass permissions configuration and hooks enforcement (Section 20.6). Add `.claude/settings.local.json` to `.gitignore`.
 7. **`.claude/hooks/`** populated with enforcement scripts (Section 20.5)
 8. **`.claude/agents/`** populated with custom subagents (Section 20.3.3, Full Build only)
-9. **Claude Code plugins reviewed and installed** — run `/plugin marketplace` and evaluate available plugins before Phase 0 / Step 2 begins. **Required plugins:**
-   - **Superpowers** (`/plugin install superpowers@claude-plugins-official`) — provides brainstorming, planning, subagent-driven execution with two-stage review, systematic debugging, and verification workflows. Skills auto-trigger based on intent (slash commands are deprecated). See Section 20.9 for integration details.
-   - **Context7** (`/plugin install context7`) — fetches real-time, version-specific library documentation to prevent outdated API hallucinations. Recommended for all projects. See Section 20.9 for details.
-   - **Frontend Design** (`/plugin install frontend-design@claude-plugins-official`) — Anthropic's official skill for producing distinctive, production-grade frontend interfaces. Auto-activates during UI work. Required for any project with user-facing screens. Pushes Claude Code toward bold aesthetic choices instead of generic AI defaults.
-   - Document installed plugins in `lessons-learned.md`.
+9. **Development framework and plugins installed** based on framework selection (Section 20.9):
+   - **If Superpowers:** `/plugin install superpowers@claude-plugins-official`
+   - **If GSD:** `npx get-shit-done-cc --claude --local`
+   - **If BMAD:** `npx bmad-method install`
+   - **All frameworks:** `/plugin install context7` and `/plugin install frontend-design@claude-plugins-official` (for UI projects)
+   - Document installed framework and plugins in `lessons-learned.md`.
 10. **`STATE.md`** created in project root with initial build state (Section 20.7)
 11. **Implementation Decisions Captured** via Discuss Phase (Section 20.8) — Claude Code asks targeted questions about how the owner envisions the implementation before any code is written
 12. **`git init`** and initial commit with scaffolding files
@@ -1529,10 +1531,19 @@ Context rot — the quality degradation that happens as Claude Code fills its co
 - Phases that involve both backend and frontend work (split into separate subagent tasks)
 - Long builds where you've experienced quality degradation in later phases
 
-Express Build projects can also benefit from this pattern — the single build pass can be structured as a series of subagent tasks orchestrated by the lead session, keeping the lead's context fresh for the final verification step.
+Express Build projects can also benefit from this pattern -- the single build pass can be structured as a series of subagent tasks orchestrated by the lead session, keeping the lead's context fresh for the final verification step.
+
+**Skill-level implementation with `context: fork`:** For custom subagents defined as skills (Section 20.3.3), adding `context: fork` to the YAML frontmatter automatically runs the skill in an isolated subagent context. The `agent:` field selects the agent type (`Explore` for read-only analysis, `general-purpose` for tasks that modify files, `Plan` for architecture analysis). This achieves the same context isolation described above but as a built-in skill property rather than manual orchestration. Superpowers' subagent-driven-development (Section 20.9) also uses this pattern -- each task is dispatched to a fresh subagent, and only the result returns to the lead session.
 
 #### 20.3.3 Custom Subagents (Project Infrastructure)
 For larger applications, define reusable custom subagents as markdown files in `.claude/agents/` in the project root. These auto-trigger based on the work being done, enforcing framework rules without manual invocation.
+
+**Context isolation with `context: fork`:** Custom subagents should use `context: fork` in their frontmatter so they run in an isolated context window. When a subagent reads dozens of files to check security policies or component architecture, that exploration stays in the subagent's context -- only the final report returns to the main conversation. This keeps the lead session's context clean for orchestration and prevents the quality degradation that comes from filling the main context with intermediate analysis.
+
+**Agent types with `agent:`:** The `agent:` frontmatter field specifies which built-in agent configuration runs the subagent. Match the agent type to the task:
+- `Explore` — Fast, read-only, optimized for file search and pattern matching. Uses a lighter model. Best for review and analysis subagents that only need to read code.
+- `general-purpose` — All tools, full reasoning. Best for subagents that need to both analyze and write code.
+- `Plan` — Architecture analysis, step planning. Best for planning and design review.
 
 **Project folder structure:**
 ```
@@ -1545,24 +1556,17 @@ For larger applications, define reusable custom subagents as markdown files in `
 
 **Recommended custom subagents for this framework:**
 
-**`security-reviewer.md`** — Automatically engages when auth code, RLS policies, Edge Functions, or permission logic is modified. Checks against the rules in Sections 4, 5, and 12. Returns a structured report with severity ratings.
+**`security-reviewer.md`** — Automatically engages when auth code, RLS policies, Edge Functions, or permission logic is modified. Checks against the rules in Sections 4, 5, and 12. Returns a structured report with severity ratings. Uses `Explore` agent (read-only analysis).
 
 ```markdown
+---
+name: security-reviewer
+description: Reviews code changes for security compliance with the build contract. Auto-triggers on auth, RLS, Edge Function, or permission changes.
+context: fork
+agent: Explore
+---
 # Security Reviewer Agent
 
-## Description
-Reviews code changes for security compliance with the project's
-claude.md build contract.
-
-## When to Use
-Automatically engage when:
-- RLS policies are created or modified
-- Edge Function auth logic is changed
-- Permission checks are added or modified
-- New database tables are created (verify GRANTs and RLS)
-- User-facing error handling is modified
-
-## Instructions
 When reviewing code:
 1. Verify RLS policies use auth.jwt(), not subqueries on auth.users
 2. Verify table-level GRANTs exist for anon and authenticated roles
@@ -1578,25 +1582,20 @@ Return a structured report with:
 - Recommended fix
 ```
 
-**`component-checker.md`** — Automatically engages when page files are modified. Verifies decomposition rules from Section 17.2.
+**`component-checker.md`** — Automatically engages when page files are modified. Verifies decomposition rules from Section 17.2. Uses `Explore` agent (read-only analysis).
 
 ```markdown
+---
+name: component-checker
+description: Verifies page files remain lean and features are properly decomposed into components. Auto-triggers on page file changes.
+context: fork
+agent: Explore
+---
 # Component Architecture Checker
 
-## Description
-Verifies that page files remain lean and features are properly
-decomposed into components per claude.md Section 17.2.
-
-## When to Use
-Automatically engage when:
-- Any file in src/pages/ is modified
-- A new page file is created
-- A feature is added to an existing page
-
-## Instructions
 1. Check if any page file exceeds ~200 lines
 2. Verify the page only handles layout, routing state, and data
-   orchestration — not feature logic
+   orchestration -- not feature logic
 3. Check for inline UI blocks that should be extracted to components
 4. If a feature similar to one on another page is being built,
    flag it for extract-then-share per Section 17.3
@@ -1604,23 +1603,17 @@ Automatically engage when:
 Return: file name, line count, and specific extraction recommendations.
 ```
 
-**`test-coverage.md`** — Automatically engages after feature completion to verify role-based test cases are updated.
+**`test-coverage.md`** — Automatically engages after feature completion to verify role-based test cases are updated. Uses `general-purpose` agent (may need to write test files).
 
 ```markdown
+---
+name: test-coverage
+description: Verifies role-based test cases are updated when auth, permissions, or role-specific UI is modified. Auto-triggers after feature completion.
+context: fork
+agent: general-purpose
+---
 # Test Coverage Agent
 
-## Description
-Verifies that role-based test cases in tests/role-tests.md are
-updated when features affecting auth, permissions, or role-specific
-UI are modified.
-
-## When to Use
-Automatically engage when:
-- A feature touching auth or permissions is completed
-- New role-specific UI is added
-- Existing role boundaries are modified
-
-## Instructions
 1. Read tests/role-tests.md
 2. Identify which roles are affected by the current changes
 3. Check if test cases exist for the new or modified functionality
@@ -2037,88 +2030,95 @@ Before building a phase, Claude Code must conduct a focused discussion with the 
 - Claude Code must not skip this step even if the PRD seems detailed. The PRD describes features; the discuss phase describes experience.
 - `CONTEXT.md` is cumulative — each phase's decisions are appended, not overwritten.
 - Subagents executing tasks must be given `CONTEXT.md` in their spawn prompt so implementation decisions are consistently applied.
-- **If Superpowers is installed:** The brainstorming skill handles general design exploration and produces a formal spec document with reviewer validation. After brainstorming completes, the discuss phase runs as a **supplemental UI/UX pass** using the question table above to capture any GUI and user journey decisions that brainstorming didn't specifically address. Both brainstorming outputs and discuss phase decisions are captured in `CONTEXT.md`.
+- **If Superpowers is the selected framework:** The brainstorming skill handles general design exploration and produces a formal spec document with reviewer validation. After brainstorming completes, the discuss phase runs as a **supplemental UI/UX pass** using the question table above to capture any GUI and user journey decisions that brainstorming didn't specifically address. Both brainstorming outputs and discuss phase decisions are captured in `CONTEXT.md`.
+- **If GSD or BMAD is the selected framework:** This section does not apply. GSD and BMAD have their own design exploration and decision capture workflows.
 
-### 20.9 Superpowers Plugin Integration
-The [Superpowers plugin](https://github.com/obra/superpowers) (by obra) provides a battle-tested development workflow with 14 composable skills. It is installed as a Claude Code plugin and coexists with this build contract. **Superpowers handles development process; `CLAUDE.md` handles architecture, security, and production readiness.** When they conflict, `CLAUDE.md` takes precedence — Superpowers explicitly defers to user instructions.
+### 20.9 Development Framework Selection and Integration
 
-#### 20.9.1 Installation
-Superpowers and Context7 are installed during pre-build scaffolding (Section 7, item 9):
+This build contract is a **governing layer** that works alongside third-party development frameworks. The framework handles the development process (brainstorming, planning, execution, review). This build contract handles architecture, security, production readiness, and the rules that no framework should override. The development framework is selected during the kickoff prompt based on project requirements.
 
-**Superpowers** (required):
-```
-/plugin install superpowers@claude-plugins-official
-```
+#### 20.9.1 Common Infrastructure (All Frameworks)
 
-Or for early access features, use the obra marketplace:
-```
-/plugin marketplace add obra/superpowers-marketplace
-/plugin install superpowers@superpowers-marketplace
-```
-
-**Important:** The slash commands `/brainstorm`, `/write-plan`, and `/execute-plan` are **deprecated** as of Superpowers v5.0. Skills now auto-trigger based on intent — describe what you want to build and Claude Code automatically invokes the brainstorming skill. To verify installation, start a session and say "Let's build X" — Claude Code should invoke the brainstorming skill, not start coding. If it starts coding, the plugin isn't loaded correctly.
+Regardless of which development framework is selected, the following are always installed:
 
 **Context7** (recommended):
 ```
 /plugin install context7
 ```
-
-Or as an MCP server (if plugin install isn't available):
-```
-claude mcp add context7 -- npx -y @upstash/context7-mcp@latest
-```
-
-Context7 fetches real-time, version-specific documentation from source repositories. It prevents Claude Code from hallucinating outdated APIs or deprecated methods. Add "use context7" to any prompt, or it auto-triggers when you mention library/framework names. Particularly valuable for Supabase, React, and any rapidly evolving library in your stack.
+Fetches real-time, version-specific library documentation. Prevents outdated API hallucinations. Auto-triggers when you mention library/framework names.
 
 **Frontend Design** (required for projects with UI):
 ```
 /plugin install frontend-design@claude-plugins-official
 ```
+Anthropic's official skill for distinctive, production-grade frontend interfaces. Auto-activates during UI work.
 
-Anthropic's official skill (277k+ installs) for producing distinctive, production-grade frontend interfaces. It auto-activates when Claude Code detects frontend work and pushes toward bold aesthetic choices — distinctive typography, purposeful color palettes, atmospheric depth — instead of the generic "AI slop" look. Before writing any UI code, it forces Claude Code to think through purpose, tone, constraints, and differentiation. No explicit invocation needed — it loads automatically during UI phases.
+**Hooks** (mandatory):
+The `.claude/hooks/pre_tool_use.py` safety layer runs regardless of framework. See Section 20.5.
 
-#### 20.9.2 How Superpowers Integrates with This Framework
+#### 20.9.2 Superpowers (Default Framework)
 
-**Brainstorming + Discuss Phase (Sections 20.8 + 20.9):**
-Superpowers' brainstorming skill runs first — it explores project context, asks clarifying questions, proposes 2-3 approaches, presents the design in sections for approval, produces a formal spec document, and dispatches a spec-reviewer subagent to validate it. After brainstorming completes, our discuss phase (Section 20.8) runs as a supplemental pass specifically targeting the UI/UX question table to ensure GUI design, user journeys, layout choices, interaction patterns, and empty states are explicitly captured. This two-layer approach ensures both the general design and the specific user experience are dialed in before coding starts.
+[Superpowers](https://github.com/obra/superpowers) by Jesse Vincent (100k+ stars) provides structured brainstorming, implementation planning, subagent-driven execution with two-stage review, and verification-before-completion.
 
-**Planning (replaces manual plan creation):**
-Superpowers' writing-plans skill breaks work into bite-sized tasks (2-5 minutes each) with exact file paths, complete implementation guidance, and verification steps. It maps out which files will be created or modified before defining tasks. A plan-reviewer subagent validates the plan against the spec before execution begins. This augments our self-audit loop — plan quality is verified before code is written, not just after.
+**Install:** `/plugin install superpowers@claude-plugins-official`
 
-**Execution (enhances Section 20.3.2.1 Fresh Context Execution):**
-Superpowers' subagent-driven-development skill dispatches a fresh subagent per task with a **two-stage review** after each:
-1. **Spec compliance reviewer** — verifies the implementation matches the spec (nothing missing, nothing extra). Explicitly adversarial: "Do Not Trust the Report."
-2. **Code quality reviewer** — checks actual code quality, architecture, file organization.
+Skills auto-trigger based on intent (slash commands are deprecated as of v5.0). Verify by saying "Let's build X" — Claude Code should invoke brainstorming, not start coding.
 
-If either reviewer finds issues, the implementer fixes them and the reviewer re-checks. Implementer subagents return structured status: `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or `NEEDS_CONTEXT`. The controller handles each appropriately — re-dispatching with more context, upgrading model capability, breaking tasks apart, or escalating to the human.
+**How Superpowers integrates with this framework:**
 
-This is more rigorous than our self-audit loop alone and should be used for all task execution when Superpowers is installed.
+- **Brainstorming + Discuss Phase:** Superpowers brainstorming runs first (general design, formal spec, reviewer validation). Our discuss phase (Section 20.8) runs as a supplemental UI/UX pass to capture GUI and user journey decisions. Both outputs go into `CONTEXT.md`.
+- **Planning:** Superpowers' writing-plans skill breaks work into bite-sized tasks with file paths and verification steps. A plan-reviewer subagent validates before execution.
+- **Execution:** Subagent-driven-development dispatches a fresh subagent per task with two-stage review: spec compliance ("Do Not Trust the Report") then code quality. Implementers return structured status: `DONE`, `DONE_WITH_CONCERNS`, `BLOCKED`, or `NEEDS_CONTEXT`.
+- **Verification:** Verification-before-completion requires running actual commands and checking real output before claiming done.
+- **Debugging:** Systematic-debugging provides 4-phase root cause analysis for complex problems.
 
-**Verification (strengthens Section 20.1 Definition of Done):**
-Superpowers' verification-before-completion skill prevents claiming work is done without running actual verification commands and confirming real output. "Evidence before assertions always." This pairs with our Playwright E2E tests (Section 14.6) — Superpowers verifies individual task completion, Playwright verifies end-to-end flows.
+**What this framework adds on top of Superpowers:**
+Setup guide generation (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 69-item freeze audit, security architecture, auth patterns, lessons learned, hooks safety layer, component architecture rules, deployment discipline.
 
-**Debugging (supplements Section 20.2 Error Recovery):**
-Superpowers' systematic-debugging skill provides a 4-phase root cause analysis process with evidence-based verification. When our mid-build error recovery protocol (Section 20.2) identifies an issue, invoke systematic-debugging for complex problems rather than guessing at fixes.
+#### 20.9.3 GSD (Get Shit Done) — For Experimental/MVP Projects
 
-#### 20.9.3 What Superpowers Does NOT Replace
-Superpowers is a development process tool. The following remain governed exclusively by this build contract (`CLAUDE.md`):
-- Security architecture (RLS, auth patterns, Edge Function JWT handling)
-- Stack-specific lessons learned (Supabase, Discord OAuth, Clerk, Railway)
-- Production readiness (freeze audit, setup guides, observability, PITR)
-- Build state tracking (`STATE.md`)
-- Deployment discipline (tagged commits, schema drift prevention)
-- Permission configuration and hook enforcement
-- Data safety rules
-- Component architecture and decomposition rules
-- All 69 freeze audit checklist items
+[GSD](https://github.com/gsd-build/get-shit-done) by TACHES (23k+ stars) is a lightweight spec-driven system focused on preventing context rot through aggressive atomicity. Best when requirements are unclear and the product needs to be discovered through iteration.
 
-#### 20.9.4 Priority Order
+**Install:** `npx get-shit-done-cc --claude --local`
+
+**How GSD integrates with this framework:**
+
+GSD has its own initialization (`/gsd:new-project`), discuss phase, research phase, planning, state tracking (`.planning/`), and execution system. These **replace** the corresponding sections of our framework. Specifically, when GSD is selected:
+
+- **Remove from project-specific `claude.md`:** Section 7 (Deterministic Build Order, replaced by GSD's phase-by-phase planning), Section 8.8 (Setup Guides, not needed for MVPs), Section 20.7 (STATE.md, GSD uses `.planning/`), Section 20.8 (Discuss Phase, GSD has its own).
+- **Keep:** All security sections (4, 5), auth patterns, error handling (9), schema migration (10), data integrity (12), code hygiene (17), hooks (20.5), permission config (20.6), custom subagents (20.3.3 if Full Build).
+- **Replace freeze audit** with a lighter MVP readiness checklist: auth working, RLS enforced, no hardcoded secrets, error handling covers network calls, debug mode works, git clean, basic manual testing passed.
+- **Atomic git commits:** GSD commits after every task, making `git bisect` reliable. This is stricter than our standard git requirements and should be respected.
+- **Adversarial plan verification:** GSD uses dedicated planning and verifying agents where the planner creates plans and the verifier cross-checks against goals. This is stronger than our self-audit loop for plan quality.
+
+**What this framework adds on top of GSD:**
+Security architecture (RLS, auth patterns, JWT handling), lessons learned patterns (Supabase quirks, React render stability, Railway deployment fixes), hooks safety layer, Context7, Frontend Design. GSD doesn't know about your specific stack's failure patterns — this framework does.
+
+#### 20.9.4 BMAD (Breakthrough Method for Agile AI-Driven Development) — For Enterprise/Compliance Projects
+
+[BMAD](https://github.com/bmad-code-org/BMAD-METHOD) by BMad Code (9 agents, 50+ workflows) simulates a full agile development team. Best when requirements are locked and formal documentation is a deliverable alongside the software.
+
+**Install:** `npx bmad-method install`
+
+**How BMAD integrates with this framework:**
+
+BMAD has its own brainstorming (Business Analyst), requirements (Product Manager), architecture (System Architect), sprint planning (Scrum Master), implementation (Developer), and testing (QA Engineer) workflows. These **replace** some corresponding sections. When BMAD is selected:
+
+- **Remove from project-specific `claude.md`:** Section 20.7 (STATE.md, BMAD uses `bmad/`), Section 20.8 (Discuss Phase, BMAD has its own workflow progression).
+- **Keep:** All security sections, setup guide generation (Section 8.8), pre-build hard gate, `.env` verification, full freeze audit, hooks, permission config, code hygiene, component architecture, custom subagents.
+- BMAD's PRD creation can replace or supplement our PRD template. If BMAD generates the PRD, verify it covers our required security acceptance tests and implementation notes before proceeding.
+- BMAD's story-by-story execution maps to our phased build model. Each completed story should satisfy the acceptance criteria that our phase gates would check.
+
+**What this framework adds on top of BMAD:**
+Security architecture (BMAD doesn't encode Supabase RLS patterns, JWT handling, or auth initialization gotchas), setup guide generation for third-party services, `.env` verification gate, stack-specific lessons learned, hooks safety layer, Context7, Frontend Design, the production-focused freeze audit.
+
+#### 20.9.5 Priority Order (All Frameworks)
 1. **Your explicit instructions** (verbal or in chat) — highest priority
 2. **`CLAUDE.md`** (this build contract) — architecture, security, production rules
-3. **Superpowers skills** — development process and workflow
+3. **Selected development framework** (Superpowers / GSD / BMAD) — development process and workflow
 4. **Claude Code defaults** — lowest priority
 
-If Superpowers' TDD skill says "always write tests first" and your `CLAUDE.md` or verbal instruction says otherwise, follow your instruction. Superpowers explicitly documents this precedence order.
+All three frameworks explicitly defer to `CLAUDE.md` / user instructions when they conflict.
 
 ---
 
@@ -2163,7 +2163,7 @@ Before production readiness, Claude must confirm:
 - [ ] `STATE.md` exists and reflects all phases as complete with approval dates (per Section 20.7)
 - [ ] `CONTEXT.md` exists with implementation decisions captured for all UI phases (per Section 20.8)
 - [ ] Claude Code plugins reviewed and installed before build; installed plugins documented in `lessons-learned.md`
-- [ ] Superpowers plugin installed and brainstorming + discuss phase both completed before coding (per Section 20.9)
+- [ ] Selected development framework installed and design/brainstorming phase completed before coding (per Section 20.9)
 - [ ] Privileged actions logged
 - [ ] No production data deleted during development or testing (per Section 12.3)
 - [ ] Debug mode toggles correctly and does not leak data when off
@@ -2277,11 +2277,12 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 1.5 |
+| Version | 2.0 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
-| Changes from v1.4 | Added: Superpowers plugin integration (Section 20.9) with corrected install method (slash commands deprecated, skills auto-trigger). Context7 plugin recommended for real-time library documentation. Frontend Design plugin required for UI projects. Subagent-driven execution with two-stage review, verification-before-completion, systematic debugging. Supplemental UI/UX discuss phase after Superpowers brainstorming. Replaced sandbox permission model with bypass permissions + hooks as the only permission configuration (Section 20.6). Open Questions Resolution Phase as mandatory hard gate before handoff to Claude Code — all questions must be walked through interactively and resolutions folded back into PRD and claude.md. Pre-Build Setup hard gate — Claude Code must present checklist and get human confirmation before coding, plus .env verification against .env.example. |
+| Changes from v1.5 | **v2.0 - Multi-Framework Orchestration.** Transformed from a single-framework system into a governing build contract that auto-selects the right development framework based on project requirements. Section 20.9 rewritten as Development Framework Selection and Integration with support for Superpowers (default, production builds), GSD (experimental/MVP builds), and BMAD (enterprise/compliance builds). Kickoff prompt now detects both build complexity (Express/Full) and requirements clarity to recommend the optimal framework. Framework-conditional rules: setup guides, pre-build gates, STATE.md, CONTEXT.md, and freeze audit scope adjust based on selected framework. Common infrastructure (Context7, Frontend Design, hooks) applies to all frameworks. |
+| Changes from v1.4 | Added: Superpowers plugin integration with corrected install method. Context7 plugin. Frontend Design plugin. Bypass permissions + hooks as permission configuration. Open Questions Resolution Phase as mandatory hard gate. Pre-Build Setup hard gate. Custom subagents with `context: fork` and `agent:` type frontmatter. |
 | Changes from v1.3 | Added: Setup Guide Generation system (Section 8.8). Compaction-proof phase gate rule in Section 1.3. Self-audit verification loop in Section 20.1 with STATE.md integration. PreCompact hook with STATE.md awareness. Pre-build scaffolding checklist with plugin review. Playwright E2E testing (Section 14.6). Sandbox + auto-allow permission configuration (Section 20.6). Persistent Build State via STATE.md (Section 20.7). Discuss Phase via CONTEXT.md (Section 20.8). Fresh Context Execution Pattern (Section 20.3.2.1). Expanded Freeze Audit Checklist (67 items). |
 | Changes from v1.2 | Added: `.env.example` as mandatory scaffolding artifact with grouped sections, client-safe vs server-only scope, and sync requirement. Corrected Agent Teams architecture per official docs (mailbox communication, shared task list with dependency tracking, teammate direct interaction, ~5x token cost, team-specific hooks). Added Subagents via Task Tool, Custom Subagents in `.claude/agents/`, Claude Code Hooks as automated rule enforcement with template scripts (PreToolUse guardrails, PostToolUse quality checks, Stop session reminders). Added TeammateIdle and TaskCompleted hook events for Agent Teams quality gates. |
 | Changes from v1.1 | Added: Clerk as alternative auth provider with Supabase integration patterns, Billing provider field, Production Observability requirements (error tracking, analytics, feature adoption, session replay), Component Architecture and Decomposition rules with file size thresholds, Feature Extraction Protocol (extract-then-share), Database Backup/PITR requirements, Edge Function Deployment Discipline (tag-based deploys only), Schema Drift Prevention, Data Safety During Development and Testing (never delete production data), Role-Based Test Cases as living document, Pre-Branch Checklist for ongoing development, Deterministic Over Probabilistic principle, Mid-Build Error Recovery Protocol with lessons-learned.md, Reuse Over Recreation rule, Documentation Integrity rule, expanded Freeze Audit Checklist |
