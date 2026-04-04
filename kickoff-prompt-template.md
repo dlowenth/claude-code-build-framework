@@ -1,6 +1,6 @@
 # Project Kickoff Prompt Template
 
-**Usage:** Open a new Claude chat. Paste this entire prompt. Attach the PRD template (`prd-template.md`), the master `claude.md`, and your transcript or context document. Claude will produce all files needed to start the build in Claude Code.
+**Usage:** Open a new Claude chat. Paste this entire prompt. Attach the PRD template (`prd-template.md`), the master `claude.md`, the `security-framework.md`, and your transcript or context document. Claude will produce all files needed to start the build in Claude Code.
 
 ---
 
@@ -11,7 +11,8 @@ You are acting as a senior product architect preparing a new application build f
 I am providing you with:
 1. **Master `claude.md`** — The full governing build contract with all possible sections (attached)
 2. **PRD Template** — The blank PRD structure that must be used (attached as `prd-template.md`)
-3. **Project Context** — A transcript, notes, or description of what I want to build (pasted below or attached)
+3. **Security Framework** — The tiered security companion document (attached as `security-framework.md`)
+4. **Project Context** — A transcript, notes, or description of what I want to build (pasted below or attached)
 
 Your job is to produce the following deliverables, each as a separate downloadable file:
 
@@ -90,6 +91,27 @@ If I specify a build mode or framework in the project context (e.g., "this is a 
 | **Unclear, experimental** | GSD + Express | GSD + Full Build |
 | **Locked, compliance-grade** | Superpowers + Express | BMAD + Full Build |
 
+### Dimension 3: Security Classification
+
+Assess the project's security tier per `security-framework.md`:
+
+- **Tier 0: Minimal** — No auth, no sensitive data, no external APIs. CLI utilities, internal dashboards, static sites.
+- **Tier 1: Standard** — Has auth, stores user data, connects to external APIs, but no financial or health data.
+- **Tier 2: Elevated** — Handles PII, financial data, health data, legal documents, or connects to accounts the user cares about.
+- **Tier 3: Critical** — Can move money, execute trades, manage credentials for high-value systems.
+
+**Auto-escalation:** If the project handles financial account credentials, bank data, health records, government IDs, or data whose exposure causes measurable harm, it is automatically Tier 2+. If it can initiate transactions or move money, it is automatically Tier 3.
+
+State the recommended tier with reasoning. The owner can override.
+
+**What security tier determines:**
+- Tier 0: Base `claude.md` security only (RLS, no hardcoded secrets, `.env` handling)
+- Tier 1: Add threat modeling, network allowlist, supply chain defense, session security
+- Tier 2: Add credential management, action tier system, immutable audit logging, canary detection
+- Tier 3: Add hardware key encryption, full ceremony for execution-tier actions, project-type-specific controls
+
+The project-specific `claude.md` should include only the `security-framework.md` sections applicable to the assessed tier. Tier-specific freeze audit items from the security framework are appended to the project-specific freeze audit checklist.
+
 ---
 
 ### Deliverable 1: Project-Specific `claude.md`
@@ -101,6 +123,12 @@ Produce a **customized version of `claude.md`** tailored to this specific projec
 - Core operating principles (Section 1) — always kept.
 - Claude Code execution contract, freeze audit, and best practices — always kept, but trim checklist items that don't apply.
 - Any section the project context explicitly or implicitly requires.
+
+**Security framework integration (based on Dimension 3 assessment):**
+- **Tier 0:** No additional sections from `security-framework.md`. Base `claude.md` security is sufficient.
+- **Tier 1:** Include threat modeling (SF Section 2), network allowlist (SF Section 3), supply chain defense (SF Section 7), and session security (SF Section 8) as new sections in the project-specific `claude.md`. Append their freeze audit items.
+- **Tier 2:** Include all Tier 1 sections plus credential management (SF Section 4), action tier system (SF Section 5), immutable audit logging (SF Section 6), canary detection (SF Section 10), and AI agent security (SF Section 9, if agents are used). Append their freeze audit items.
+- **Tier 3:** Include all Tier 2 sections plus hardware key encryption details (SF Sections 4.3-4.6), full ceremony requirements for execution-tier actions, and project-type-specific considerations (SF Section 11). Append their freeze audit items.
 
 **What to remove or simplify:**
 - If the project is **not multi-tenant**, strip all multi-tenancy language: tenant_id references, tenant isolation tests, tenant-scoped RLS patterns, tenant membership tables, impersonation policies. Simplify authorization sections to single-tenant equivalents.
@@ -173,6 +201,7 @@ If **BMAD**:
 - Mid-build error recovery protocol
 - Hook enforcement (pre_tool_use guardrails at minimum -- Section 20.5)
 - Freeze audit checklist (full for Superpowers/BMAD, lighter MVP checklist for GSD)
+- Security tier classification and applicable `security-framework.md` sections (Tier 1+)
 - The versioning table at the end
 
 **Additional items to keep for Superpowers and BMAD (remove for GSD):**
@@ -185,7 +214,7 @@ If **BMAD**:
 - Setup guide generation for all external services (Section 8.8)
 - Pre-branch checklist (for ongoing development)
 
-**Versioning:** Set the version to `2.1-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.1, listing the build mode selected, the development framework selected, and a summary of what was removed or simplified.
+**Versioning:** Set the version to `2.2-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.2, listing the build mode selected, the development framework selected, the security tier assessed, and a summary of what was removed or simplified.
 
 ---
 

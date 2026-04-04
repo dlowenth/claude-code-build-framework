@@ -34,6 +34,7 @@ Every new project must declare the following before any planning begins. The PRD
 | Repository | GitHub (required) |
 | Build Mode | Express Build / Full Build (see Section 1.5) |
 | Development Framework | Superpowers / GSD / BMAD (see Section 20.9) |
+| Security Tier | 0 / 1 / 2 / 3 (see security-framework.md) |
 
 If any field is unresolved, it is an open question that must be answered before Phase 0 completes. All open questions from PRD Section 17 must be resolved during the kickoff conversation — Claude Code must verify zero unresolved items before beginning the plan.
 
@@ -300,6 +301,9 @@ Every PRD must include a completed permissions matrix. Example structure:
 | Export data | ✓ | ✓ | ✓ | — |
 
 Roles are project-specific and must be defined in the PRD.
+
+### 4.4 Security Framework (Companion Document)
+For projects classified at Security Tier 1 or above (per `security-framework.md`), additional security controls apply beyond the base authorization enforcement defined in this section. The security framework provides tiered controls for threat modeling, network allowlists, credential management with hardware key encryption, action tier classification, immutable audit logging, supply chain defense, session hardening, AI agent security, and canary detection. The applicable sections are determined by the project's security tier and incorporated into the project-specific `claude.md` during kickoff. **The security framework file (`security-framework.md`) must be attached during the kickoff process for all projects.**
 
 ---
 
@@ -2263,6 +2267,9 @@ Before production readiness, Claude must confirm:
 - [ ] SEO structure in place: semantic HTML, meta tags, Open Graph, JSON-LD on public-facing pages
 - [ ] SEO/structured data managed via shared utility (not scattered across components)
 
+**Security Tier Items (from `security-framework.md`):**
+For projects at Security Tier 1 or above, the applicable freeze audit items from `security-framework.md` must also pass. These are tier-specific and are appended to the project-specific `claude.md` during kickoff. The master checklist above covers Tier 0 (base security). Tier 1+ items include: network allowlist verification, supply chain audit, session security, and (for Tier 2+) credential registry, action tier classification, immutable audit logging, and canary deployment.
+
 Final output must explicitly state:
 **READ-ONLY PLAN**
 or
@@ -2344,10 +2351,11 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 2.1 |
+| Version | 2.2 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
+| Changes from v2.1 | **v2.2 - Security Framework.** Added `security-framework.md` as a companion document with tiered security classification (Tier 0-3). Kickoff prompt assesses three dimensions (build complexity, requirements clarity, security classification). Security Tier field added to Section 0 metadata. Section 4.3 added as reference to security framework. PRD template Section 10 expanded with Security Classification, Network Allowlist, and Action Tiers subsections. Freeze audit notes tier-specific items from security framework. Never-remove list includes security tier classification. Four files now ship: claude.md, prd-template.md, kickoff-prompt-template.md, security-framework.md. |
 | Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. Replaced bypass permissions with auto mode as recommended permission configuration (Section 20.6). Freeze audit updated for three-category model, MCP safety, and auto mode (70 items). |
 | Changes from v1.5 | **v2.0 - Multi-Framework Orchestration.** Transformed from a single-framework system into a governing build contract that auto-selects the right development framework based on project requirements. Section 20.9 rewritten as Development Framework Selection and Integration with support for Superpowers (default, production builds), GSD (experimental/MVP builds), and BMAD (enterprise/compliance builds). Kickoff prompt now detects both build complexity (Express/Full) and requirements clarity to recommend the optimal framework. Framework-conditional rules: setup guides, pre-build gates, STATE.md, CONTEXT.md, and freeze audit scope adjust based on selected framework. Common infrastructure (Context7, Frontend Design, hooks) applies to all frameworks. |
 | Changes from v1.4 | Added: Superpowers plugin integration with corrected install method. Context7 plugin. Frontend Design plugin. Bypass permissions + hooks as permission configuration. Open Questions Resolution Phase as mandatory hard gate. Pre-Build Setup hard gate. Custom subagents with `context: fork` and `agent:` type frontmatter. |

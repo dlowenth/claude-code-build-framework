@@ -35,13 +35,15 @@ Record a voice note, write out your idea, paste a transcript. Any format.
 
 ### Step 2: Generate Project Files
 
-Open a new Claude chat. Paste the kickoff prompt template. Attach the master `claude.md` and `prd-template.md`. Paste your project context. Send it.
+Open a new Claude chat. Paste the kickoff prompt template. Attach the master `claude.md`, `prd-template.md`, and `security-framework.md`. Paste your project context. Send it.
 
-The framework assesses two dimensions:
+The framework assesses three dimensions:
 
 **Build complexity:** Express Build (simple apps, one-shot execution) or Full Build (complex apps, phased with verification gates).
 
 **Requirements clarity:** Clear and stable (Superpowers), unclear and experimental (GSD), or locked with compliance needs (BMAD).
+
+**Security classification:** Tier 0 (no auth, no sensitive data) through Tier 3 (can move money, execute trades). Controls from the security framework are conditionally applied based on the tier.
 
 It produces four files: a project-specific build contract, a completed PRD, a Claude Code kickoff prompt, and an open questions summary.
 
@@ -102,6 +104,7 @@ No matter which development framework is selected, the build contract provides:
 - **Automation-first setup** -- Services with CLI/MCP support (Supabase, Railway) are configured programmatically by Claude Code during the build. Setup guides shrink to just account creation and credential copying. All automation is scoped to a new project and never touches production data.
 - **Production readiness** -- 70-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
 - **Hooks safety layer** -- `pre_tool_use.py` enforces project-specific rules on top of auto mode's built-in safety classifier
+- **Tiered security framework** -- Companion document that scales security controls to project sensitivity. Tier 0 (internal tools) gets base security. Tier 3 (financial platforms) gets threat modeling, network allowlists, credential management with hardware key encryption, action tier classification, immutable audit logging, supply chain defense, and canary detection.
 - **Build state persistence** -- `STATE.md` survives context compaction and session restarts (Superpowers builds)
 - **Component architecture rules** -- Mandatory decomposition, ~200 line file ceiling, extract-then-share protocol
 - **Code hygiene** -- React render stability, no context objects in useCallback deps, error/re-render/retry loop prevention
@@ -138,13 +141,14 @@ The kickoff prompt detects this automatically. You can always override.
 
 ---
 
-## The Three Files
+## The Four Files
 
 | File | Purpose | When to Edit |
 |---|---|---|
 | `claude.md` | Master build contract -- the governing rules | After each build, when lessons learned are folded back in |
 | `prd-template.md` | Blank PRD template | When you want to add new standard sections |
 | `kickoff-prompt-template.md` | Prompt that generates project files from raw context | When you change the deliverable structure or workflow |
+| `security-framework.md` | Tiered security companion -- controls scaled to project sensitivity | When new security patterns or project-type considerations are learned |
 
 ---
 

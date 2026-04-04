@@ -297,18 +297,42 @@ Provide a block for each entity. Add entities as needed.
 
 ## 10) Security, Compliance, and Privacy
 
-### 10.1 Security Controls
+### 10.1 Security Classification *(per `security-framework.md`)*
+- Security Tier: `<<0 / 1 / 2 / 3>>`
+- Justification: `<<WHY THIS TIER>>`
+- Network allowlist declared: Yes / No / N/A (Tier 1+)
+- Threat model documented: Yes / No / N/A (Tier 1+)
+- Credential registry required: Yes / No / N/A (Tier 2+)
+- Action tier system required: Yes / No / N/A (Tier 2+)
+- Immutable audit log required: Yes / No / N/A (Tier 2+)
+- Canary detection: Yes / No / N/A (Tier 2+)
+- Hardware key encryption: Yes / No / N/A (Tier 3)
+- AI agent security controls: Yes / No / N/A (if agents are used at runtime)
+
+### Network Allowlist *(Tier 1+ per `security-framework.md` Section 3)*
+| Domain | Purpose |
+|---|---|
+| `<<DOMAIN>>` | `<<PURPOSE>>` |
+
+All outbound HTTP requests must use the allowlisted HTTP client. Any domain not on this list is blocked.
+
+### Action Tiers *(Tier 2+ per `security-framework.md` Section 5)*
+| Action | Tier | Authentication Required |
+|---|---|---|
+| `<<ACTION>>` | Passive / Sensitive / Execution | `<<REQUIREMENT>>` |
+
+### 10.2 Security Controls
 - Encryption in transit and at rest: Supabase default *(confirm)*
 - RLS enabled tables: `<<LIST ALL TENANT-SCOPED TABLES>>`
 - Audit logging requirements: `<<DESCRIPTION>>`
 - Soft delete and purge requirements: `<<DESCRIPTION>>`
 - Tenant export requirements: `<<DESCRIPTION>>`
 
-### 10.2 Compliance Targets *(If Applicable)*
+### 10.3 Compliance Targets *(If Applicable)*
 - `<<COMPLIANCE_1>>`
 - `<<COMPLIANCE_2>>`
 
-### 10.3 Security Acceptance Tests
+### 10.4 Security Acceptance Tests
 - A user in Tenant A cannot access Tenant B data by ID guessing
 - Role boundaries are enforced at DB level
 - Storage access (if used) is tenant-safe
