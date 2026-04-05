@@ -88,7 +88,7 @@ Claude Code works autonomously. Hooks block dangerous operations. The selected f
 
 ### Step 7: Ship
 
-The freeze audit checklist must pass before deployment (full 70 items for Superpowers/BMAD, lighter MVP readiness for GSD). After shipping, review `lessons-learned.md` and fold systemic patterns back into the master build contract for the next project.
+The freeze audit checklist must pass before deployment (full 75 items for Superpowers/BMAD, lighter MVP readiness for GSD). After shipping, review `lessons-learned.md` and fold systemic patterns back into the master build contract for the next project.
 
 ---
 
@@ -102,7 +102,7 @@ No matter which development framework is selected, the build contract provides:
 - **Stack-specific lessons learned** -- Dozens of battle-tested patterns for Supabase, React, Railway. The `getSession()` vs `getUser()` deadlock. The two-effect auth initialization. The `.npmrc` cross-platform fix. Every bug fought gets encoded as a mandatory rule.
 - **Hard gates** -- Open questions must be resolved before handoff. Pre-build setup must be confirmed. `.env` verified against `.env.example`. These exist because without them, critical steps get forgotten.
 - **Automation-first setup** -- Services with CLI/MCP support (Supabase, Railway) are configured programmatically by Claude Code during the build. Setup guides shrink to just account creation and credential copying. All automation is scoped to a new project and never touches production data.
-- **Production readiness** -- 70-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
+- **Production readiness** -- 75-item freeze audit, setup guide generation for third-party services, deployment discipline, observability requirements, PITR backup guidance
 - **Hooks safety layer** -- `pre_tool_use.py` enforces project-specific rules on top of auto mode's built-in safety classifier
 - **Tiered security framework** -- Companion document that scales security controls to project sensitivity. Tier 0 (internal tools) gets base security. Tier 3 (financial platforms) gets threat modeling, network allowlists, credential management with hardware key encryption, action tier classification, immutable audit logging, supply chain defense, and canary detection.
 - **Build state persistence** -- `STATE.md` survives context compaction and session restarts (Superpowers builds)

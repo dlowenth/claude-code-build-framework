@@ -814,6 +814,31 @@ Complete these steps after the build finishes:
 - **Never connect MCP servers to production databases or existing projects with live data**
 - Cross-reference between guides when setup steps span multiple tools
 
+### 8.9 Build Artifact Validation (Publish Safety)
+
+**Lesson learned:** The Claude Code source code leak (March 31, 2026) was caused by a missing `*.map` entry in `.npmignore`. A 59.8 MB source map containing 512,000 lines of source code shipped to the public npm registry. No CI/CD check caught it. This was the second such incident in 13 months for the same product. The leak coincided with a supply chain attack on the axios npm package, compounding the exposure.
+
+**The rule:** Before any deployment or publish step, verify the artifact contains only what you intend to ship.
+
+#### 8.9.1 For Projects That Publish npm Packages
+- **`.npmignore` must explicitly exclude:** `*.map`, `*.tsbuildinfo`, `.env*`, `*.pem`, `*.key`, `src/` (if publishing compiled output), `tests/`, `*.test.*`, `.claude/`, `docs/`, and any debug or development artifacts
+- **Alternatively, use the `files` field in `package.json`** to allowlist only the files that should be published (safer than blocklisting with `.npmignore`)
+- **Pre-publish verification is mandatory:** Run `npm pack --dry-run` before every first publish and after any build configuration change. Review the file list. If the package size exceeds the expected baseline by more than 2x, investigate before publishing
+- **CI/CD gate (recommended):** Add an automated check that compares the packed artifact size against a recorded baseline. Flag if size increases by more than 50% unexpectedly
+
+#### 8.9.2 For All Deployed Projects
+- **No source maps in production** unless explicitly required for error tracking (and if so, source maps must be served via a private error tracking service, never bundled in the public deploy)
+- **No debug artifacts, test files, or development configuration in production deploys**
+- **Verify deployed artifact matches the build output:** The deploy step should use a locked, tagged build — not a live build from source that might include uncommitted files
+- **Size gate:** If a deployment artifact grows by more than 50% between releases without a corresponding feature addition, investigate before deploying. Unexpected size increases often indicate included debug files, unoptimized assets, or accidentally bundled source
+
+#### 8.9.3 Claude Code Installation
+Claude Code itself should be installed via the **native installer** (not npm) to avoid exposure to npm supply chain attacks:
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+The native installer uses a standalone binary that does not rely on the npm dependency chain and supports background auto-updates. This recommendation is informed by the March 2026 incident where the Claude Code npm package shipped alongside trojanized axios versions on the same registry.
+
 ---
 
 # 9. Error Handling and Debug Strategy
@@ -1789,7 +1814,7 @@ The following hook scripts enforce key framework rules automatically. These are 
 ```python
 #!/usr/bin/env python3
 """Block dangerous operations and enforce framework rules before tool execution."""
-import sys, json
+import sys, json, os, re
 
 def main():
     event = json.loads(sys.stdin.read())
@@ -1805,6 +1830,31 @@ def main():
                 "reason": "Blocked: destructive rm -rf command"
             }))
             return
+
+        # Supply chain: warn on install of packages not in pre-approved list
+        # Adapt APPROVED_PACKAGES to your project's PRD Section 2
+        install_match = re.search(
+            r'(?:npm install|npm i|pnpm add|bun add)\s+([^\s&|;]+)',
+            command
+        )
+        if install_match:
+            pkg = install_match.group(1)
+            # Skip flags (--save-dev, etc.) and scoped install-all
+            if not pkg.startswith("-") and pkg != ".":
+                approved_file = "approved-packages.json"
+                if os.path.exists(approved_file):
+                    with open(approved_file) as f:
+                        approved = json.load(f)
+                    # Strip version specifier for comparison
+                    pkg_name = re.split(r'[@^~>=<]', pkg)[0] or pkg
+                    if pkg_name not in approved.get("packages", []):
+                        print(json.dumps({
+                            "warning": f"SUPPLY CHAIN: '{pkg_name}' is not "
+                                f"in approved-packages.json. Verify: "
+                                f"maintainer reputation, download count, "
+                                f"last publish date, post-install scripts. "
+                                f"Add to approved-packages.json if approved."
+                        }))
 
     # Block direct modification of governing documents without approval
     if tool_name in ("Write", "Edit"):
@@ -1826,8 +1876,8 @@ if __name__ == "__main__":
 **`.claude/hooks/post_tool_use.py` — Post-execution quality checks:**
 ```python
 #!/usr/bin/env python3
-"""Check output quality after tool execution."""
-import sys, json, os
+"""Check output quality and supply chain safety after tool execution."""
+import sys, json, os, subprocess
 
 def main():
     event = json.loads(sys.stdin.read())
@@ -1841,10 +1891,55 @@ def main():
             with open(file_path, "r") as f:
                 line_count = sum(1 for _ in f)
             if line_count > 200 and "/pages/" in file_path:
-                # Log warning (doesn't block, but surfaces the issue)
                 print(json.dumps({
                     "warning": f"File {file_path} is {line_count} lines. "
                                f"Consider decomposing per Section 17.2."
+                }))
+
+    # Supply chain: run npm audit after any npm/pnpm install
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if any(cmd in command for cmd in ["npm install", "pnpm install",
+                                           "pnpm add", "npm i ",
+                                           "bun install", "bun add"]):
+            try:
+                result = subprocess.run(
+                    ["npm", "audit", "--audit-level=high", "--json"],
+                    capture_output=True, text=True, timeout=30,
+                    cwd=os.getcwd()
+                )
+                if result.returncode != 0:
+                    try:
+                        audit = json.loads(result.stdout)
+                        vulns = audit.get("metadata", {}).get(
+                            "vulnerabilities", {})
+                        high = vulns.get("high", 0)
+                        critical = vulns.get("critical", 0)
+                        if high > 0 or critical > 0:
+                            print(json.dumps({
+                                "warning": f"SUPPLY CHAIN: npm audit found "
+                                    f"{high} high, {critical} critical "
+                                    f"vulnerabilities. Review before "
+                                    f"proceeding. Run 'npm audit' for details."
+                            }))
+                    except json.JSONDecodeError:
+                        pass
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass  # npm not available or timed out — skip silently
+
+    # Supply chain: warn on lockfile absence after install
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")
+        if any(cmd in command for cmd in ["npm install", "pnpm install",
+                                           "bun install"]):
+            lockfiles = ["package-lock.json", "pnpm-lock.yaml",
+                         "yarn.lock", "bun.lockb"]
+            if not any(os.path.exists(lf) for lf in lockfiles):
+                print(json.dumps({
+                    "warning": "SUPPLY CHAIN: No lockfile found after "
+                               "install. Dependency versions are not pinned. "
+                               "Run install again to generate a lockfile "
+                               "and commit it to Git."
                 }))
 
 if __name__ == "__main__":
@@ -2143,7 +2238,7 @@ Skills auto-trigger based on intent (slash commands are deprecated as of v5.0). 
 - **Debugging:** Systematic-debugging provides 4-phase root cause analysis for complex problems.
 
 **What this framework adds on top of Superpowers:**
-Setup guide generation (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 70-item freeze audit, security architecture, auth patterns, lessons learned, hooks safety layer, component architecture rules, deployment discipline.
+Setup guide generation (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 75-item freeze audit, security architecture, auth patterns, lessons learned, hooks safety layer, component architecture rules, deployment discipline.
 
 #### 20.9.3 GSD (Get Shit Done) — For Experimental/MVP Projects
 
@@ -2254,7 +2349,12 @@ Before production readiness, Claude must confirm:
 - [ ] Database backup tier declared in PRD — PITR flagged as recommended for production user-facing apps (per Section 8.5)
 - [ ] Git repository is clean with descriptive commit history
 - [ ] `lessons-learned.md` reviewed — any items that should be folded into master `claude.md` flagged to project owner
-- [ ] `.npmrc` with `force=true` exists in project root (required for Windows → Railway cross-platform deploy)
+- [ ] `.npmrc` with `force=true` exists in project root (required for Windows to Railway cross-platform deploy)
+- [ ] Supply chain: `npm audit` shows no high or critical vulnerabilities (per Section 8.9, security-framework.md Section 7)
+- [ ] Supply chain: all dependency versions pinned in lockfiles, lockfiles committed to Git
+- [ ] Supply chain: no dependencies with post-install scripts unless explicitly approved
+- [ ] Build artifact: no source maps, debug files, `.env` files, or credential files in deployed/published artifact (per Section 8.9)
+- [ ] Build artifact: if publishing to npm, `npm pack --dry-run` reviewed and artifact size within expected baseline
 - [ ] Auto-remediation changelog is clean (if applicable)
 - [ ] LLM calls use appropriate model tier per task (no Opus for mechanical tasks)
 - [ ] No LLM calls for tasks that should be deterministic scripts
@@ -2351,11 +2451,12 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 2.2 |
+| Version | 2.3 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
-| Changes from v2.1 | **v2.2 - Security Framework.** Added `security-framework.md` as a companion document with tiered security classification (Tier 0-3). Kickoff prompt assesses three dimensions (build complexity, requirements clarity, security classification). Security Tier field added to Section 0 metadata. Section 4.3 added as reference to security framework. PRD template Section 10 expanded with Security Classification, Network Allowlist, and Action Tiers subsections. Freeze audit notes tier-specific items from security framework. Never-remove list includes security tier classification. Four files now ship: claude.md, prd-template.md, kickoff-prompt-template.md, security-framework.md. |
+| Changes from v2.2 | **v2.3 - Supply Chain Enforcement and Build Artifact Safety.** Added supply chain enforcement to hooks: `post_tool_use.py` runs `npm audit` after every install and warns on missing lockfiles; `pre_tool_use.py` warns on installation of packages not in `approved-packages.json`. Added Section 8.9 (Build Artifact Validation) with publish safety rules for npm packages, production deploy verification, deployment size gates, and Claude Code native installer recommendation (informed by the March 2026 Claude Code source map leak). Five new freeze audit items for supply chain and build artifact verification. Freeze audit now 75 items. |
+| Changes from v2.1 | **v2.2 - Security Framework.** Added `security-framework.md` as a companion document with tiered security classification (Tier 0-3). Kickoff prompt assesses three dimensions (build complexity, requirements clarity, security classification). Security Tier field added to Section 0 metadata. Section 4.4 added as reference to security framework. PRD template Section 10 expanded with Security Classification, Network Allowlist, and Action Tiers subsections. Freeze audit notes tier-specific items from security framework. Never-remove list includes security tier classification. Four files now ship: claude.md, prd-template.md, kickoff-prompt-template.md, security-framework.md. |
 | Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. Replaced bypass permissions with auto mode as recommended permission configuration (Section 20.6). Freeze audit updated for three-category model, MCP safety, and auto mode (70 items). |
 | Changes from v1.5 | **v2.0 - Multi-Framework Orchestration.** Transformed from a single-framework system into a governing build contract that auto-selects the right development framework based on project requirements. Section 20.9 rewritten as Development Framework Selection and Integration with support for Superpowers (default, production builds), GSD (experimental/MVP builds), and BMAD (enterprise/compliance builds). Kickoff prompt now detects both build complexity (Express/Full) and requirements clarity to recommend the optimal framework. Framework-conditional rules: setup guides, pre-build gates, STATE.md, CONTEXT.md, and freeze audit scope adjust based on selected framework. Common infrastructure (Context7, Frontend Design, hooks) applies to all frameworks. |
 | Changes from v1.4 | Added: Superpowers plugin integration with corrected install method. Context7 plugin. Frontend Design plugin. Bypass permissions + hooks as permission configuration. Open Questions Resolution Phase as mandatory hard gate. Pre-Build Setup hard gate. Custom subagents with `context: fork` and `agent:` type frontmatter. |

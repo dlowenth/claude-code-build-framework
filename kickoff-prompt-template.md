@@ -56,7 +56,7 @@ Based on the project context, select the development framework that will handle 
 
 What Superpowers provides: Structured brainstorming with formal spec review, implementation planning with bite-sized tasks, subagent-driven execution with two-stage review (spec compliance then code quality), verification-before-completion, systematic debugging. Our discuss phase adds a supplemental UI/UX pass for GUI and user journey decisions.
 
-What our framework adds on top: Setup guide generation for all third-party services (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution phase, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 70-item freeze audit, and all security/auth/deployment rules.
+What our framework adds on top: Setup guide generation for all third-party services (`docs/resources/`), pre-build hard gate with human confirmation, open questions resolution phase, `.env` verification, STATE.md for build state persistence, CONTEXT.md for implementation decisions, full 75-item freeze audit, and all security/auth/deployment rules.
 
 **GSD (Get Shit Done)** — Use when:
 - Requirements are unclear, experimental, or expected to change significantly
@@ -214,7 +214,7 @@ If **BMAD**:
 - Setup guide generation for all external services (Section 8.8)
 - Pre-branch checklist (for ongoing development)
 
-**Versioning:** Set the version to `2.2-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.2, listing the build mode selected, the development framework selected, the security tier assessed, and a summary of what was removed or simplified.
+**Versioning:** Set the version to `2.3-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.3, listing the build mode selected, the development framework selected, the security tier assessed, and a summary of what was removed or simplified.
 
 ---
 

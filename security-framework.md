@@ -494,5 +494,5 @@ Append the applicable freeze audit items from each section above to the project-
 | Version | 1.0 |
 | Status | Active |
 | Last Updated | 2026-04-04 |
-| Companion To | claude.md v2.2+ |
+| Companion To | claude.md v2.3+ |
 | Changes | Initial release. Tiered security classification, threat modeling, network allowlists, credential management with hardware key encryption, action tier system, immutable audit logging, supply chain defense, AI agent security, canary detection, project-type considerations. |
