@@ -442,10 +442,29 @@ When a canary triggers:
 ## 12. Plugin and MCP Security Validation (Tier 1+)
 
 ### Principle
-Every plugin, MCP server, or external tool connection is a trust decision. A malicious or compromised plugin can exfiltrate data, inject prompts, harvest credentials, or exceed its stated purpose — all while appearing to function normally. Validation happens before connection, not after.
+Every plugin, MCP server, skill, or external tool connection is a trust decision. Validation happens before connection or loading, not after. There are two distinct input channels that shape AI behavior, and both require governance:
+- **Capability inputs (plugins)** grant the AI the ability to act — calling tools, triggering hooks, executing scripts. A compromised plugin can exfiltrate data, inject prompts, harvest credentials, or exceed its stated purpose.
+- **Knowledge inputs (skills)** instruct the AI on what to do — shaping its reasoning, decisions, and outputs through context. A malicious or poorly worded skill can instruct the AI to bypass security controls, expose credentials, or undermine governance.
+
+The plugin validation checklist (Section 12.1) governs capability inputs. The skill security content audit (Section 12.3) governs knowledge inputs. Together, they form the two pre-execution security gates.
+
+A plugin is a package that can contain distinct component types, each with a different risk profile:
+- **Skills** — Instruction files (typically Markdown) that load into context when active. Skills are passive — they never execute code, never make network connections, never access external systems. However, skills directly shape AI behavior through instructions, which is its own attack vector: a malicious or poorly worded skill can instruct the AI to bypass governance, expose data, or behave in ways that conflict with the project's security tier. Skills carry two costs: context overhead (tokens consumed on every prompt — see `claude.md` Section 1.7) and instruction risk (what the AI is being told to do).
+- **Tools** — Individual capabilities the AI can call. Each tool has a defined name, description, input parameters, and output. The AI reads the tool definition and decides during execution whether and when to invoke it. Risk: each tool is a capability you're granting the AI — what data it can access, what actions it can take.
+- **Hooks** — System-triggered code that fires at specific workflow points (pre-tool-use, post-tool-use, session stop). The AI does not decide to run hooks — they fire automatically based on system conditions. Risk: hooks modify system behavior silently and can intercept tool calls, alter behavior, or execute code without AI or user awareness.
+- **Scripts** — Code triggered by hooks or plugin infrastructure, running behind the scenes. The AI does not invoke scripts directly. Scripts are the plumbing — managing state, checking conditions, executing background operations. Risk: scripts run with whatever permissions the plugin has and execute without explicit AI or user initiation.
+- **Commands** — User-invokable actions (e.g., slash commands). The user explicitly triggers these. Commands are the user-facing entry point that often configures hooks and scripts behind the scenes. Risk: a command may appear simple but set up persistent hooks or scripts that then run silently on every subsequent interaction.
+
+Risk gradient for code execution: skills (none — passive) → tools (moderate — AI-initiated) → hooks/scripts (highest — system-initiated, silent). Risk gradient for instruction influence: skills shape behavior directly through context and must be audited for content (Section 12.3).
 
 ### 12.1 Plugin Validation Checklist
 Before any plugin or MCP server is connected to a project, the following must be reviewed. This checklist is a required artifact for any build that includes plugin connections. It should be completed during the PRD review and architecture phases.
+
+**Component Inventory (required first step):**
+- [ ] Plugin components inventoried: which tools does it expose, which hooks does it register (and their trigger points), which scripts does it execute (and what triggers them), any bundled commands, any bundled skills
+- [ ] For plugins with hooks or scripts: document what each hook triggers, what code each script executes, what files/network calls/state modifications scripts make. Plugins with hooks and scripts require deeper review than tool-only plugins.
+- [ ] For plugins with commands: document what each command configures — does it set up hooks, scripts, or persistent state that runs silently after the command completes?
+- [ ] For plugins with bundled skills: evaluate whether the skills are necessary for the current project or adding unnecessary context overhead. If skills are not needed, determine if they can be disabled or excluded.
 
 **Source Verification:**
 - [ ] Plugin source identified: manufacturer-direct, verified open-source organization, or community project
@@ -453,11 +472,12 @@ Before any plugin or MCP server is connected to a project, the following must be
 - [ ] Anonymous, newly created, or unmaintained sources flagged and require explicit owner approval before connection
 - [ ] Plugin version pinned — no auto-updating to unreviewed versions
 
-**Permissions Audit:**
-- [ ] Plugin's requested permissions documented (what it reads, what it writes, what systems it accesses)
+**Permissions Audit (tool-level, not just plugin-level):**
+- [ ] Each tool the plugin exposes documented with its name, purpose, what data it can access, and what actions it can take
+- [ ] Tools restricted to only those the agent actually needs — if a plugin exposes 15 tools but the agent only needs 2, the other 13 must be excluded from the agent's available tool set (via `allowedTools` in subagent definitions or equivalent filtering)
 - [ ] Access scope matches stated function — a calendar integration requesting file system access is a red flag
-- [ ] Principle of least privilege verified — plugin has minimum permissions required for its stated purpose
-- [ ] Any permissions beyond the stated purpose flagged for owner review
+- [ ] Principle of least privilege verified at the tool level — the agent has access to the minimum set of tools required for its purpose
+- [ ] Any tools with write, delete, or modify capabilities explicitly justified — read-only tools preferred where sufficient
 
 **Data Flow Mapping:**
 - [ ] Data flow documented: does data stay in your tenant/project, or does it route through a third-party server?
@@ -488,12 +508,36 @@ For plugins that operate at runtime in the built application (not just during th
 - **Agents must never receive raw credentials from plugin responses.** Plugin responses should be filtered through an application layer that strips or masks sensitive data before it enters the agent's context.
 - **Plugin failures must not expose credentials or internal state.** Error handling for plugin calls should return generic error messages, not stack traces or connection strings.
 
-### Freeze Audit Items (Plugin Security)
+### 12.3 Skill Security Content Audit
+Skills shape AI behavior through instructions. A malicious skill can instruct the AI to bypass governance, and a poorly worded skill can create the same vulnerabilities inadvertently — the AI cannot distinguish between intentional malice and careless wording. This audit applies to all skills loaded into a project, whether externally sourced or internally authored. Internally authored skills are not exempt.
+
+**When to audit:** On initial load and on every version update. If flagged patterns are found, the skill must not be loaded until the issues are reviewed and resolved by the builder.
+
+**Scan skill instructions for:**
+- [ ] Instructions to include, expose, or output credentials, API keys, tokens, or authentication data in any form
+- [ ] Instructions to bypass, ignore, or override security tier classifications, governance controls, or build framework rules
+- [ ] Instructions to send, transmit, or forward data to external endpoints, URLs, or email addresses not defined in the project's approved plugin architecture
+- [ ] Instructions to suppress logging, avoid audit trails, or hide actions from the user or reviewer
+- [ ] Instructions that grant the AI broader permissions or tool access than the project requires — overly broad language like "use any available tool" or "do whatever is needed" that undermines least privilege
+- [ ] Instructions that conflict with the project's security tier — e.g., a Tier 1 project with a skill instructing the AI to handle data as if no restrictions exist
+
+**Source classification:**
+- **Externally sourced skills** (downloaded from public repositories, provided by third parties): Must be reviewed before loading, same standard as any plugin. Treat as untrusted until audited.
+- **Internally authored skills**: Must still pass the content audit. The risk from poor wording is equivalent to the risk from malicious intent — the AI processes both identically.
+
+**Distinction from MCP prompt injection:** A skill is a static, readable document — every instruction is visible and auditable before loading. An MCP prompt injection is dynamic — hidden instructions arrive at runtime in tool responses and cannot be pre-read. Both are real attack vectors, but skills are mitigated by pre-load content audit while MCP injection is mitigated by treating tool responses as untrusted input (Section 12.2).
+
+### Freeze Audit Items (Plugin and Skill Security)
 - [ ] Plugin validation checklist completed for every MCP server, plugin, and external tool connection
+- [ ] Component inventory documented for each plugin (tools, hooks, scripts, commands, skills)
 - [ ] All plugin sources verified (manufacturer-direct or verified open-source)
-- [ ] Plugin permissions audited — no excessive access beyond stated purpose
+- [ ] Tool-level permissions enforced — agents only have access to the specific tools they need, not every tool a plugin exposes
+- [ ] Plugins with hooks or scripts reviewed with elevated scrutiny — trigger conditions, executed code, and state modifications documented
 - [ ] Data flow documented for each plugin — data routing and retention understood
 - [ ] Plugin credentials stored per security tier requirements
+- [ ] Skill security content audit completed for every skill loaded into the project
+- [ ] No skills contain instructions to expose credentials, bypass governance, transmit data to unapproved endpoints, suppress logging, or grant excessive permissions
+- [ ] Externally sourced skills reviewed before loading — treated as untrusted until audited
 - [ ] Tier 2+: Plugin interaction logging active and auditable
 
 ---
@@ -557,5 +601,5 @@ Append the applicable freeze audit items from each section above to the project-
 | Status | Active |
 | Last Updated | 2026-04-12 |
 | Companion To | claude.md v2.4+ |
-| Changes from 1.0 | Added plugin and MCP auto-escalation triggers to Section 1 (projects with MCP/plugin connections are automatically Tier 1+, Tier 2+ if connected systems contain PII or client data). Added Section 12 (Plugin and MCP Security Validation) with validation checklist covering source verification, permissions audit, data flow mapping, credential handling, auditability, compliance verification, and runtime plugin security. Tier inheritance updated to include Section 12 for Tier 1+. Renumbered Integration section to 13. |
+| Changes from 1.0 | Added plugin and MCP auto-escalation triggers to Section 1. Added Section 12 (Plugin and MCP Security Validation) with component-level architecture: plugins inventoried by component type (tools, hooks, scripts, commands, skills), each with distinct risk profile and vetting approach. Two pre-execution security gates: plugin validation checklist (12.1) for capability inputs and skill security content audit (12.3) for knowledge inputs. Tool-level least privilege, hook/script transparency, runtime plugin security (12.2), and mandatory skill content scanning for governance-undermining instructions. Tier inheritance updated to include Section 12 for Tier 1+. Renumbered Integration section to 13. |
 | Changes (v1.0) | Initial release. Tiered security classification, threat modeling, network allowlists, credential management with hardware key encryption, action tier system, immutable audit logging, supply chain defense, AI agent security, canary detection, project-type considerations. |
