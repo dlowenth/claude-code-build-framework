@@ -308,6 +308,7 @@ Provide a block for each entity. Add entities as needed.
 - Canary detection: Yes / No / N/A (Tier 2+)
 - Hardware key encryption: Yes / No / N/A (Tier 3)
 - AI agent security controls: Yes / No / N/A (if agents are used at runtime)
+- Plugin/MCP validation checklist completed: Yes / No / N/A (Tier 1+ with external connections, per `security-framework.md` Section 12)
 
 ### Network Allowlist *(Tier 1+ per `security-framework.md` Section 3)*
 | Domain | Purpose |

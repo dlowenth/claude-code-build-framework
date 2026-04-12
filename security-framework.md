@@ -20,8 +20,8 @@ Every project must declare a security tier during kickoff. The tier determines w
 
 ### What Each Tier Inherits
 - **Tier 0:** Base `claude.md` security (RLS, no hardcoded secrets, `.env` handling)
-- **Tier 1:** Tier 0 + Sections 2, 3, 7, 8 from this document
-- **Tier 2:** Tier 1 + Sections 4, 5, 6, 9
+- **Tier 1:** Tier 0 + Sections 2, 3, 7, 8, 12 from this document
+- **Tier 2:** Tier 1 + Sections 4, 5, 6, 9, 10
 - **Tier 3:** All sections, full framework
 
 ### Declaration
@@ -40,6 +40,9 @@ If the project handles any of the following, it is automatically Tier 2 or highe
 - Social Security numbers, government IDs
 - Passwords or authentication credentials for other systems
 - Data whose exposure would cause measurable financial or legal harm to users
+
+**Plugin and MCP auto-escalation:**
+If the project connects to any external system via MCP server, plugin, or API integration, it is automatically Tier 1 or higher. If any connected system contains user PII, client records, financial data, or authentication credentials, it is automatically Tier 2 or higher. This applies regardless of whether the project itself stores that data — the connection creates the attack surface. The plugin validation checklist (Section 12.1) is required for all projects with external plugin connections at Tier 1+.
 
 If the project can **initiate transactions, move money, execute trades, or modify external account settings**, it is automatically Tier 3.
 
@@ -436,7 +439,66 @@ When a canary triggers:
 
 ---
 
-## 12. Integration with claude.md and PRD Template
+## 12. Plugin and MCP Security Validation (Tier 1+)
+
+### Principle
+Every plugin, MCP server, or external tool connection is a trust decision. A malicious or compromised plugin can exfiltrate data, inject prompts, harvest credentials, or exceed its stated purpose — all while appearing to function normally. Validation happens before connection, not after.
+
+### 12.1 Plugin Validation Checklist
+Before any plugin or MCP server is connected to a project, the following must be reviewed. This checklist is a required artifact for any build that includes plugin connections. It should be completed during the PRD review and architecture phases.
+
+**Source Verification:**
+- [ ] Plugin source identified: manufacturer-direct, verified open-source organization, or community project
+- [ ] For open-source plugins: verified author/organization, active maintenance history (commits within last 90 days), meaningful community adoption (stars, forks, downloads)
+- [ ] Anonymous, newly created, or unmaintained sources flagged and require explicit owner approval before connection
+- [ ] Plugin version pinned — no auto-updating to unreviewed versions
+
+**Permissions Audit:**
+- [ ] Plugin's requested permissions documented (what it reads, what it writes, what systems it accesses)
+- [ ] Access scope matches stated function — a calendar integration requesting file system access is a red flag
+- [ ] Principle of least privilege verified — plugin has minimum permissions required for its stated purpose
+- [ ] Any permissions beyond the stated purpose flagged for owner review
+
+**Data Flow Mapping:**
+- [ ] Data flow documented: does data stay in your tenant/project, or does it route through a third-party server?
+- [ ] For plugins that proxy data through external servers: data handling, retention, and jurisdiction documented
+- [ ] Sensitive data fields identified — which fields pass through the plugin, which are filtered or masked
+
+**Credential Handling:**
+- [ ] Credentials required by the plugin documented (API keys, OAuth tokens, service accounts)
+- [ ] Credentials stored according to the project's security tier requirements (see Section 4)
+- [ ] No credentials passed in plaintext in configuration files or environment variables visible to the plugin
+- [ ] Credential scope minimized — read-only keys where possible, separate keys for separate permissions
+
+**Auditability:**
+- [ ] Tier 2+: All plugin interactions logged and auditable (requests sent, responses received, errors)
+- [ ] Tier 1: Plugin interaction logging recommended
+- [ ] Tier 0: Logging optional but encouraged
+- [ ] Log content verified — no sensitive data (credentials, full account numbers) in plugin logs
+
+**Compliance Verification (when applicable):**
+- [ ] For plugins handling data subject to HIPAA, GDPR, PCI, or ITAR: compliance certifications verified against actual reports, not marketing claims
+- [ ] SOC 2 or ISO 27001 certifications verified with report dates — expired or pending certifications do not count
+- [ ] Business Associate Agreements (BAAs) executed where required (HIPAA)
+
+### 12.2 Runtime Plugin Security
+For plugins that operate at runtime in the built application (not just during the build process):
+
+- **Treat tool responses as untrusted input.** A malicious plugin can embed hidden instructions in its response that may influence the agent's behavior (prompt injection via tool results). The application should include output validation to detect anomalous behavior after tool calls.
+- **Agents must never receive raw credentials from plugin responses.** Plugin responses should be filtered through an application layer that strips or masks sensitive data before it enters the agent's context.
+- **Plugin failures must not expose credentials or internal state.** Error handling for plugin calls should return generic error messages, not stack traces or connection strings.
+
+### Freeze Audit Items (Plugin Security)
+- [ ] Plugin validation checklist completed for every MCP server, plugin, and external tool connection
+- [ ] All plugin sources verified (manufacturer-direct or verified open-source)
+- [ ] Plugin permissions audited — no excessive access beyond stated purpose
+- [ ] Data flow documented for each plugin — data routing and retention understood
+- [ ] Plugin credentials stored per security tier requirements
+- [ ] Tier 2+: Plugin interaction logging active and auditable
+
+---
+
+## 13. Integration with claude.md and PRD Template
 
 ### Kickoff Prompt Addition
 The kickoff prompt should assess security tier and include it in the Build Mode detection:
@@ -491,8 +553,9 @@ Append the applicable freeze audit items from each section above to the project-
 
 | Field | Value |
 |---|---|
-| Version | 1.0 |
+| Version | 1.1 |
 | Status | Active |
-| Last Updated | 2026-04-04 |
-| Companion To | claude.md v2.3+ |
-| Changes | Initial release. Tiered security classification, threat modeling, network allowlists, credential management with hardware key encryption, action tier system, immutable audit logging, supply chain defense, AI agent security, canary detection, project-type considerations. |
+| Last Updated | 2026-04-12 |
+| Companion To | claude.md v2.4+ |
+| Changes from 1.0 | Added plugin and MCP auto-escalation triggers to Section 1 (projects with MCP/plugin connections are automatically Tier 1+, Tier 2+ if connected systems contain PII or client data). Added Section 12 (Plugin and MCP Security Validation) with validation checklist covering source verification, permissions audit, data flow mapping, credential handling, auditability, compliance verification, and runtime plugin security. Tier inheritance updated to include Section 12 for Tier 1+. Renumbered Integration section to 13. |
+| Changes (v1.0) | Initial release. Tiered security classification, threat modeling, network allowlists, credential management with hardware key encryption, action tier system, immutable audit logging, supply chain defense, AI agent security, canary detection, project-type considerations. |

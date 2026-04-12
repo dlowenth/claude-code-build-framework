@@ -126,7 +126,7 @@ Produce a **customized version of `claude.md`** tailored to this specific projec
 
 **Security framework integration (based on Dimension 3 assessment):**
 - **Tier 0:** No additional sections from `security-framework.md`. Base `claude.md` security is sufficient.
-- **Tier 1:** Include threat modeling (SF Section 2), network allowlist (SF Section 3), supply chain defense (SF Section 7), and session security (SF Section 8) as new sections in the project-specific `claude.md`. Append their freeze audit items.
+- **Tier 1:** Include threat modeling (SF Section 2), network allowlist (SF Section 3), supply chain defense (SF Section 7), session security (SF Section 8), and plugin/MCP security validation (SF Section 12, if the project uses any external plugins or MCP connections) as new sections in the project-specific `claude.md`. Append their freeze audit items.
 - **Tier 2:** Include all Tier 1 sections plus credential management (SF Section 4), action tier system (SF Section 5), immutable audit logging (SF Section 6), canary detection (SF Section 10), and AI agent security (SF Section 9, if agents are used). Append their freeze audit items.
 - **Tier 3:** Include all Tier 2 sections plus hardware key encryption details (SF Sections 4.3-4.6), full ceremony requirements for execution-tier actions, and project-type-specific considerations (SF Section 11). Append their freeze audit items.
 
@@ -214,7 +214,7 @@ If **BMAD**:
 - Setup guide generation for all external services (Section 8.8)
 - Pre-branch checklist (for ongoing development)
 
-**Versioning:** Set the version to `2.3-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.3, listing the build mode selected, the development framework selected, the security tier assessed, and a summary of what was removed or simplified.
+**Versioning:** Set the version to `2.4-<<APP_NAME>>` and note in the changelog that this is a project-specific derivative of master `claude.md` v2.4, listing the build mode selected, the development framework selected, the security tier assessed, and a summary of what was removed or simplified.
 
 ---
 

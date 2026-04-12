@@ -94,6 +94,9 @@ For complex applications (multi-tenant, 6+ entities, 3+ roles, calculation engin
 ## 1.6 Deterministic Over Probabilistic
 When a task can be accomplished by a deterministic script (Python, SQL, bash), it must not be delegated to LLM reasoning. AI handles orchestration, planning, and judgment. Scripts handle data transformation, file operations, API calls, and calculations. Every additional probabilistic step compounds error rates — five steps at 90% accuracy each yields 59% overall success. This principle governs Section 18.4 (When NOT to Use an LLM) and applies broadly: if the output is fully predictable from the input, use a script.
 
+## 1.7 Context Efficiency
+Only load skills, plugins, and MCP connections required for the active project. Remove or disable anything not directly relevant to the current build. Every skill file, MCP tool definition, and plugin registration consumes tokens and occupies model attention on every prompt — whether it's being used or not. Unnecessary context reduces output quality, increases cost, and compounds over long sessions because static context (CLAUDE.md, skills, tool definitions) is never compacted while conversation history is. Context efficiency is a quality and cost discipline, not just a performance optimization.
+
 ---
 
 # 2. Default Technology Stack
@@ -2451,10 +2454,11 @@ Claude must confirm receipt of all required artifacts before beginning the plan.
 
 | Field | Value |
 |---|---|
-| Version | 2.3 |
+| Version | 2.4 |
 | Status | Active |
 | Owner | <<OWNER>> |
 | Last Updated | 2026-03-09 |
+| Changes from v2.3 | **v2.4 - Context Efficiency and Plugin Security.** Added Section 1.7 (Context Efficiency) as a core operating principle: only load skills, plugins, and MCP connections required for the active project. Updated security-framework.md to v1.1: MCP/plugin connections now auto-escalate security tier (Tier 1+ for any external connection, Tier 2+ if connected system contains PII/client data). Added security-framework.md Section 12 (Plugin and MCP Security Validation) with a required validation checklist covering source verification, permissions audit, data flow mapping, credential handling, auditability, compliance verification, and runtime plugin security. Six new freeze audit items for plugin security. |
 | Changes from v2.2 | **v2.3 - Supply Chain Enforcement and Build Artifact Safety.** Added supply chain enforcement to hooks: `post_tool_use.py` runs `npm audit` after every install and warns on missing lockfiles; `pre_tool_use.py` warns on installation of packages not in `approved-packages.json`. Added Section 8.9 (Build Artifact Validation) with publish safety rules for npm packages, production deploy verification, deployment size gates, and Claude Code native installer recommendation (informed by the March 2026 Claude Code source map leak). Five new freeze audit items for supply chain and build artifact verification. Freeze audit now 75 items. |
 | Changes from v2.1 | **v2.2 - Security Framework.** Added `security-framework.md` as a companion document with tiered security classification (Tier 0-3). Kickoff prompt assesses three dimensions (build complexity, requirements clarity, security classification). Security Tier field added to Section 0 metadata. Section 4.4 added as reference to security framework. PRD template Section 10 expanded with Security Classification, Network Allowlist, and Action Tiers subsections. Freeze audit notes tier-specific items from security framework. Never-remove list includes security tier classification. Four files now ship: claude.md, prd-template.md, kickoff-prompt-template.md, security-framework.md. |
 | Changes from v2.0 | **v2.1 - Automation-First Setup.** Restructured setup guides from two-section to three-category model: Category 1 (human-only: account/project creation, credentials), Category 2 (automated: Claude Code executes via CLI/MCP during build), Category 3 (post-build refinement: production hardening). Added MCP/CLI service integration layer (Section 8.8.2) with Supabase MCP as primary example. Project safety rules: always scope to new project, never connect to production, verify target before write operations, read-only for exploration. Replaced bypass permissions with auto mode as recommended permission configuration (Section 20.6). Freeze audit updated for three-category model, MCP safety, and auto mode (70 items). |
