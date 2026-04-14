@@ -341,7 +341,7 @@ Group these by category: Build Mode, Architecture, Auth Provider, Roles/Permissi
 After delivering the four files, **you must walk me through every open question interactively before I take these files to Claude Code.** Do not let me proceed without resolving them. This is a hard gate.
 
 **Process:**
-1. Present each open question one at a time (or in small related groups), starting with the highest-impact items (Architecture, Auth, Data Model) before lower-impact items (UX, Observability).
+1. **Use the `ask_user_input` tool** to present open questions as tappable, selectable options. Present them one at a time or in small related groups, starting with the highest-impact items (Architecture, Auth, Data Model) before lower-impact items (UX, Observability). Where a question has a small set of clear options, present those options as selectable choices. Where the question is open-ended, present it with your recommended default and ask me to confirm or override.
 2. For `[SUGGESTED]` items, present your recommendation and ask me to confirm or override.
 3. For `[INFERRED]` items, explain what you assumed and why, and ask me to confirm or correct.
 4. For unresolved gaps, ask me directly. If I don't have an answer, we must either agree on a reasonable default or flag it as a known risk with a documented fallback.
@@ -354,7 +354,8 @@ After delivering the four files, **you must walk me through every open question 
 
 ## Rules for This Conversation
 
-- **Do not ask me clarifying questions before producing the first draft.** Fill in what you can, flag what you can't, and give me the four files. I'll review and iterate.
+- **Do not ask me clarifying questions before producing the first draft.** Fill in what you can, flag what you can't, and give me the four files. The drafting process is what surfaces the real questions — you can't know what you don't know until you try to write it down.
+- **After the draft, resolve all open questions interactively before finalizing.** Use the `ask_user_input` tool to walk through every open question as tappable selections. This is not optional — do not skip ahead to final delivery. The three-phase flow is: (1) draft the package, (2) resolve open questions interactively, (3) revise and re-deliver with answers incorporated.
 - **Be opinionated where the context supports it.** I'd rather review and adjust a strong first draft than answer 30 questions before seeing anything.
 - **Keep the PRD faithful to the template structure.** Do not add or renumber sections. Fill them in, mark as not applicable, or leave the placeholders.
 - **The project-specific `claude.md` should be lean.** If a section doesn't apply, cut it. The goal is that Claude Code reads only what matters for this build — no dead weight.
